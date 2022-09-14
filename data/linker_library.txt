@@ -1,3 +1,4 @@
+[Au][Hg]
 [Au]C[Hg]
 [Au]CC[Hg]
 [Au]CC(C)C[Hg]

@@ -1,3 +1,4 @@
+empty linker
 Methyl
 Ethyl group
 [Au]CC(C)C[Au]

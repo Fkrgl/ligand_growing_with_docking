@@ -7,6 +7,14 @@ import numpy as np
 from openbabel import openbabel
 import pandas as pd
 
+def label_base_fragment(mol):
+    '''
+    atoms of the base fragment are labels by a property to later decern the base fragment from similar fragments
+    mol: base fragment
+    '''
+    for atom in mol.GetAtoms():
+        atom.SetProp('base_fragment', 'True')
+    return mol
 
 def add_group(mol, atom_type, atom_idx):
     '''
@@ -206,7 +214,7 @@ def get_linker_atom_index(combo, fragment):
             return linker_idx
     return None
 
-def add_fragment(mol, fragment, mode, bond_type=Chem.rdchem.BondType.SINGLE):
+def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondType.SINGLE):
     '''
     function adds a fragment (linker or substituent) to the growing molecule
     :param mol: growing mol
@@ -216,16 +224,22 @@ def add_fragment(mol, fragment, mode, bond_type=Chem.rdchem.BondType.SINGLE):
     :return: bonded fragment to molecule
     '''
 
+    # combine both molecules into one
+    combo = Chem.CombineMols(mol, fragment)
     # select the linker atom to fuse molecules
     linker_atom_symbol = '[Au]'
     if mode == 'fragment':
+        # for fragments, also select a atom in the fragemnt for linkage
         linker_atom_symbol = '[Hg]'
-        # if mode == linker, atom_index is for the molecule the linker is added to, if mode == fragment
-        # the atom index belongs to an fragment atom
-        # a function to select an atom index is still needed
-    # combine both molecules into one
-    combo = Chem.CombineMols(mol,fragment)
-    atom_idx = get_linker_atom_index(combo, fragment)
+        atom_idx = get_linker_atom_index(combo, fragment)
+    # for linker, check if a atom index of the mol is specified
+    elif mode == 'linker':
+        if atom_idx is None:
+            print('no atom index of the molecule is specified!')
+            return
+    else:
+        print('mode does not exist. Please select \'linker\' or \'fragment\' as mode.')
+        return
     print(f'linker atom index: {atom_idx}')
     # show_indexed_mol(combo)
     # get linker atom and its neighbor

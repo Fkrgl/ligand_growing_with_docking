@@ -159,6 +159,94 @@ def show_indexed_mol(mol):
         at.SetProp('atomNote',f'{at.GetIdx()}')
     rdkit.Chem.Draw.ShowMol(mol)
 
+def check_molecule(mol):
+    '''
+    molecule is santizised to check if it is a valid molecule
+    :param mol: mol to check
+    '''
+    status = Chem.rdmolops.SanitizeMol(mol, catchErrors=True)
+    if status == Chem.rdmolops.SanitizeFlags.SANITIZE_NONE:
+        return mol
+    else:
+        print(status)
+        return None
+
+def get_linker_atom_and_neighbor(mol, linker_atom_smiles):
+    '''
+    searches the linker atom (Au or Hg) and its neighbor. The neighbor will be later linked to an atom of the
+    growing molecule
+    :param mol: growing molecule
+    :param linker_atom_smiles: Au or Hg linger atom
+    :return: linker atom and its neighbor
+    '''
+    linger_idx = mol.GetSubstructMatch(Chem.MolFromSmiles(linker_atom_smiles))[0]
+    print(f'match for {linker_atom_smiles}: {linger_idx}')
+    linker_atom = mol.GetAtomWithIdx(linger_idx)
+    linker_atom_neighbor = linker_atom.GetNeighbors()[0]
+    return linker_atom, linker_atom_neighbor
+
+def get_linker_atom_index(combo, fragment):
+    '''
+    Given combined but not yet bonded molecules, search for possible atoms of the fragment that can from a bond to the
+    growing molecule
+    :param combo: combined molecules in one object
+    :param fragment: fragment (substituent) that is added to the linker
+    :return: atom index of fragment atom that can from a bond to the linker group
+    '''
+    # because we add the fragment, it will always have the atoms with the highest index
+    # this function has to be adapted for the case that more than one substructure match is found
+    possible_linker_idx = combo.GetSubstructMatch(fragment)
+    print(possible_linker_idx)
+    print(len(possible_linker_idx))
+    # select the first atom that is a carbon and has at least one hydrogen
+    for linker_idx in possible_linker_idx:
+        linker_atom = combo.GetAtomWithIdx(linker_idx)
+        print(linker_atom)
+        if linker_atom.GetSymbol() == 'C' and linker_atom.GetTotalNumHs() > 0:
+            return linker_idx
+    return None
+
+def add_fragment(mol, fragment, mode, bond_type=Chem.rdchem.BondType.SINGLE):
+    '''
+    function adds a fragment (linker or substituent) to the growing molecule
+    :param mol: growing mol
+    :param fragment: mol
+    :param mode: 'linker' or 'fragment'. Determines if we have a fragment linker or a linker fragment
+    :param bond_type: Chem.rdchem.BondType
+    :return: bonded fragment to molecule
+    '''
+
+    # select the linker atom to fuse molecules
+    linker_atom_symbol = '[Au]'
+    if mode == 'fragment':
+        linker_atom_symbol = '[Hg]'
+        # if mode == linker, atom_index is for the molecule the linker is added to, if mode == fragment
+        # the atom index belongs to an fragment atom
+        # a function to select an atom index is still needed
+    # combine both molecules into one
+    combo = Chem.CombineMols(mol,fragment)
+    atom_idx = get_linker_atom_index(combo, fragment)
+    print(f'linker atom index: {atom_idx}')
+    # show_indexed_mol(combo)
+    # get linker atom and its neighbor
+    linker_atom, linker_atom_neighbor = get_linker_atom_and_neighbor(combo, linker_atom_symbol)
+    print(f'linker atom index: {linker_atom.GetIdx()}\nneighbor index: {linker_atom_neighbor.GetIdx()}')
+    # make combo editable
+    edcombo = Chem.EditableMol(combo)
+    # add bond between linker and neighbor of au atom
+    edcombo.AddBond(atom_idx, linker_atom_neighbor.GetIdx(), order=bond_type)
+    # remove AU and its bond to the linker
+    mol = edcombo.GetMol()
+    mol = Chem.RWMol(mol)
+    mol.RemoveBond(linker_atom.GetIdx(), linker_atom_neighbor.GetIdx())
+    mol.RemoveAtom(linker_atom.GetIdx())
+    # check if mol is valid
+    mol = check_molecule(mol)
+    if mol:
+        return mol
+    else:
+        return None
+
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
     mol = Chem.MolFromSmiles(smiles)

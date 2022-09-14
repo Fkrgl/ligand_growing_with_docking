@@ -1,0 +1,17 @@
+Methyl
+Ethyl group
+[Au]CC(C)C[Au]
+Ethylen
+Ethylen + 1 C
+Hydroxy
+Carboxy
+Carbonyl
+Ester
+Sulfide
+disulfide
+secondary amine
+secondary amine + 2 C
+tertiary amine
+tertiary amine + 1 C
+carboxamide
+[Au]C(C)N[Au]

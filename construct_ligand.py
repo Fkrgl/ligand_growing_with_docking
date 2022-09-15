@@ -349,19 +349,23 @@ def grow_molecule(n_grow_iter, base_fragment, initial_grow_seed, linkers, fragme
     leafs = [base_fragment]
     k = 0
     for i in range(n_grow_iter):
+        print(f'in iteration {i} we have {len(leafs)} leafs')
+        grown_mols = []
+        current_leafs = []
         for leaf in leafs:
             # select grow seed, grow mol on seed by one linker, fragment combo and save results in tree
             if i == 0:
-                leaf_node = AnyNode(id='root', mol=leaf)
+                leaf_node = AnyNode(id='root',mol=leaf)
                 grow_seed = initial_grow_seed
             else:
-                leaf_node = AnyNode(id=f'{k}', mol=leaf)
+                leaf_node = AnyNode(id=f'{k}',mol=leaf)
                 possible_grow_seeds = get_possible_grow_seeds(leaf, base_fragment)
                 grow_seed = get_next_grow_seed(possible_grow_seeds)
-            # grow all combinations
-            grown_mols = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, leaf_node)
-            leafs = grown_mols
+            # grow all combinations for the current leaf
+            grown_mols += add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, leaf_node)
             k += 1
+        leafs = grown_mols
+    print(f'end leafs {len(leafs)}')
     return leafs
 
 def main():

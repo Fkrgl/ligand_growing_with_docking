@@ -6,6 +6,7 @@ from collections import Counter
 import numpy as np
 from openbabel import openbabel
 import pandas as pd
+from anytree import AnyNode
 
 def label_base_fragment(mol):
     '''
@@ -201,16 +202,20 @@ def get_linker_atom_index(combo, fragment):
     :param fragment: fragment (substituent) that is added to the linker
     :return: atom index of fragment atom that can from a bond to the linker group
     '''
-    # because we add the fragment, it will always have the atoms with the highest index
-    # this function has to be adapted for the case that more than one substructure match is found
-    possible_linker_idx = combo.GetSubstructMatch(fragment)
-    print(possible_linker_idx)
-    print(len(possible_linker_idx))
+    elements = ['C', 'N']
+    possible_linker_idx = list(combo.GetSubstructMatches(fragment))
+    # more that one substructure match detected
+    if len(possible_linker_idx) > 1:
+        # select match containing highest atom indices (this belongs to the yet unconnceted fragment)
+        possible_linker_idx.sort(key=lambda x: x[0], reverse=True)
+        possible_linker_idx = possible_linker_idx[0]
+    # only one match
+    else:
+        possible_linker_idx = possible_linker_idx[0]
     # select the first atom that is a carbon and has at least one hydrogen
     for linker_idx in possible_linker_idx:
         linker_atom = combo.GetAtomWithIdx(linker_idx)
-        print(linker_atom)
-        if linker_atom.GetSymbol() == 'C' and linker_atom.GetTotalNumHs() > 0:
+        if linker_atom.GetSymbol() in elements and linker_atom.GetTotalNumHs() > 0:
             return linker_idx
     return None
 
@@ -232,6 +237,10 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
         # for fragments, also select a atom in the fragemnt for linkage
         linker_atom_symbol = '[Hg]'
         atom_idx = get_linker_atom_index(combo, fragment)
+        if atom_idx == None:
+            show_indexed_mol(combo)
+            show_indexed_mol(fragment)
+            return
     # for linker, check if a atom index of the mol is specified
     elif mode == 'linker':
         if atom_idx is None:
@@ -240,15 +249,13 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     else:
         print('mode does not exist. Please select \'linker\' or \'fragment\' as mode.')
         return
-    print(f'linker atom index: {atom_idx}')
-    # show_indexed_mol(combo)
     # get linker atom and its neighbor
     linker_atom, linker_atom_neighbor = get_linker_atom_and_neighbor(combo, linker_atom_symbol)
-    print(f'linker atom index: {linker_atom.GetIdx()}\nneighbor index: {linker_atom_neighbor.GetIdx()}')
     # make combo editable
     edcombo = Chem.EditableMol(combo)
     # add bond between linker and neighbor of au atom
     edcombo.AddBond(atom_idx, linker_atom_neighbor.GetIdx(), order=bond_type)
+
     # remove AU and its bond to the linker
     mol = edcombo.GetMol()
     mol = Chem.RWMol(mol)
@@ -261,12 +268,107 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     else:
         return None
 
+def add_all_linker_fragment_combinations(mol, grow_seed, linkers, fragments, parent):
+    '''
+    function produces all possible base_fragment-linker-fragment combinations.
+    :param mol: mol to continue growing on
+    :param grow_seed: index of atom in mol at which to continue growing
+    :param linkers: list of all linkers
+    :param fragments: list of all fragments
+    :param parent: node object of mol
+    :return: all possible combination as molecules
+    '''
+    grown_mols = []
+    nodes = []
+    print(f'number of linkers: {len(linkers)}')
+    print(f'number of fragments: {len(fragments)}')
+    for i, linker in enumerate(linkers):
+        mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
+        for j, fragment in enumerate(fragments):
+            mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', bond_type=Chem.rdchem.BondType.SINGLE)
+            if mol_linker_fragment:
+                grown_mols.append(mol_linker_fragment)
+                new_node = AnyNode(mol=mol_linker_fragment, parent=parent)
+                nodes.append(new_node)
+    parent.children = nodes
+    return grown_mols
+
+def get_possible_grow_seeds(mol, base_fragment):
+    '''
+    grow seeds are atoms at which we continue the growing. Function searches the base fragment atom indices
+    and exculdes them from the candidate atom index list for growing. Further, growing is only continued on specific
+    types (possible_atoms) and with at least one hydrogen
+    :param mol: grown molecule
+    :param base_fragment: base fragment that is contained in mol
+    :return: indices of possible grow seeds
+    '''
+    possible_atoms = ['C', 'N']
+    mol_atom_idx = set([atom.GetIdx() for atom in mol.GetAtoms()])
+    match_idx = mol.GetSubstructMatches(base_fragment)
+    for candidates in match_idx:
+        sub_structure_atom = mol.GetAtomWithIdx(candidates[0])
+        # check if atom is part of the base fragment
+        if sub_structure_atom.HasProp('base_fragment'):
+            mol_atom_idx.difference_update(candidates)
+            # only take carbons with at least one hydrogen as final grow seeds
+            final_grow_seeds = []
+            for grow_seed_idx in mol_atom_idx:
+                grow_seed = mol.GetAtomWithIdx(grow_seed_idx)
+                if grow_seed.GetSymbol() in possible_atoms and grow_seed.GetTotalNumHs() > 0:
+                    final_grow_seeds.append(grow_seed.GetIdx())
+            return final_grow_seeds
+
+    return None
+
+def get_next_grow_seed(possible_grow_seeds):
+    '''
+    function chooses the next grow seed under all candidates. At the moment this is done at random.
+    '''
+    return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
+
+
+def grow_molecule(n_grow_iter, base_fragment, initial_grow_seed, linkers, fragments):
+    '''
+    function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each of
+    the current leafs.
+    :param n_grow_iter: number of grow iterations
+    :param base_fragment: start molecule
+    :param initial_grow_seed: atom index of base fragment
+    :param linkers: list with all linkers
+    :param fragments: list with all fragments
+    :return: grown molecules (leafs of the mol tree)
+    '''
+
+    # current molecules to continue growing (leafs of the tree)
+    leafs = [base_fragment]
+    k = 0
+    for i in range(n_grow_iter):
+        for leaf in leafs:
+            # select grow seed, grow mol on seed by one linker, fragment combo and save results in tree
+            if i == 0:
+                leaf_node = AnyNode(id='root', mol=leaf)
+                grow_seed = initial_grow_seed
+            else:
+                leaf_node = AnyNode(id=f'{k}', mol=leaf)
+                possible_grow_seeds = get_possible_grow_seeds(leaf, base_fragment)
+                grow_seed = get_next_grow_seed(possible_grow_seeds)
+            # grow all combinations
+            grown_mols = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, leaf_node)
+            leafs = grown_mols
+            k += 1
+    return leafs
+
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
+    smiles = 'c1cc(CCCO)ccc1'
     mol = Chem.MolFromSmiles(smiles)
+    print(mol)
     # grow_ligand_at_random(smiles, 10)
-    # fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
-    show_indexed_mol(mol)
+    fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
+    grows = grow_molecule(1, mol, 4, linkers, fragments)
+    print(grows)
+    rdkit.Chem.Draw.MolsToGridImage(grows[-450:])
+    print(rdkit.Chem.Draw.MolsToGridImage(grows[-450:]))
 
 if __name__ == '__main__':
     main()

@@ -284,12 +284,18 @@ def add_all_linker_fragment_combinations(mol, grow_seed, linkers, fragments, par
     print(f'number of fragments: {len(fragments)}')
     for i, linker in enumerate(linkers):
         mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
-        for j, fragment in enumerate(fragments):
-            mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', bond_type=Chem.rdchem.BondType.SINGLE)
-            if mol_linker_fragment:
-                grown_mols.append(mol_linker_fragment)
-                new_node = AnyNode(mol=mol_linker_fragment, parent=parent)
-                nodes.append(new_node)
+        # check if molecule linker bond worked
+        if mol_linker:
+            for j, fragment in enumerate(fragments):
+                mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment',
+                                                   bond_type=Chem.rdchem.BondType.SINGLE)
+                print(mol_linker_fragment)
+                if mol_linker_fragment:
+                    grown_mols.append(mol_linker_fragment)
+                    new_node = AnyNode(mol=mol_linker_fragment, parent=parent)
+                    nodes.append(new_node)
+        else:
+            continue
     parent.children = nodes
     return grown_mols
 
@@ -360,15 +366,16 @@ def grow_molecule(n_grow_iter, base_fragment, initial_grow_seed, linkers, fragme
 
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
-    smiles = 'c1cc(CCCO)ccc1'
+    #smiles = 'c1cc(CCCO)ccc1'
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
+    mol = label_base_fragment(mol)
     # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
-    grows = grow_molecule(1, mol, 4, linkers, fragments)
+    grows = grow_molecule(1, mol, 1, linkers, fragments)
     print(grows)
-    rdkit.Chem.Draw.MolsToGridImage(grows[-450:])
-    print(rdkit.Chem.Draw.MolsToGridImage(grows[-450:]))
+    # rdkit.Chem.Draw.MolsToGridImage(grows[-450:])
+    # print(rdkit.Chem.Draw.MolsToGridImage(grows[-450:]))
 
 if __name__ == '__main__':
     main()

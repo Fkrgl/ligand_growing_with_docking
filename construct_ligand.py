@@ -376,8 +376,9 @@ def main():
     mol = label_base_fragment(mol)
     # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
-    grows = grow_molecule(1, mol, 1, linkers, fragments)
+    grows = grow_molecule(2, mol, 1, linkers[:2], fragments[:2])
     print(grows)
+    print(len(grows))
     # rdkit.Chem.Draw.MolsToGridImage(grows[-450:])
     # print(rdkit.Chem.Draw.MolsToGridImage(grows[-450:]))
 

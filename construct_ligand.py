@@ -409,8 +409,9 @@ def select_higher_scoring_ligands(leafs, base_fragment_score):
     return high_scoring_leafs
 
 def main():
-    smiles = 'C1=CC=C2C(=C1)C=CN2'
+    #smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
+    smiles = 'C1CC1'
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
@@ -418,7 +419,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 1, linkers[:3], fragments[:3])
+    grow_molecule(tree, 2, 1, [linkers[0]], fragments[:3])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

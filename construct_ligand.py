@@ -2,11 +2,10 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import rdkit.Chem.Draw
 import random
-from collections import Counter
 import numpy as np
-from openbabel import openbabel
 import pandas as pd
 from anytree import AnyNode
+from Mol_tree import Mol_Tree
 
 def label_base_fragment(mol):
     '''
@@ -268,20 +267,18 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     else:
         return None
 
-def add_all_linker_fragment_combinations(mol, grow_seed, linkers, fragments, parent):
+def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
-    :param mol: mol to continue growing on
+    :param mol_node: node that contains molecule to grow on
     :param grow_seed: index of atom in mol at which to continue growing
     :param linkers: list of all linkers
     :param fragments: list of all fragments
-    :param parent: node object of mol
-    :return: all possible combination as molecules
+    :return: all possible combination as molecules and nodes
     '''
     grown_mols = []
     nodes = []
-    print(f'number of linkers: {len(linkers)}')
-    print(f'number of fragments: {len(fragments)}')
+    mol = mol_node.mol
     for i, linker in enumerate(linkers):
         mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
         # check if molecule linker bond worked
@@ -289,15 +286,15 @@ def add_all_linker_fragment_combinations(mol, grow_seed, linkers, fragments, par
             for j, fragment in enumerate(fragments):
                 mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment',
                                                    bond_type=Chem.rdchem.BondType.SINGLE)
-                print(mol_linker_fragment)
                 if mol_linker_fragment:
                     grown_mols.append(mol_linker_fragment)
-                    new_node = AnyNode(mol=mol_linker_fragment, parent=parent)
+                    new_node = AnyNode(mol=mol_linker_fragment, parent=mol_node)
                     nodes.append(new_node)
         else:
             continue
-    parent.children = nodes
-    return grown_mols
+    mol_node.children = nodes
+    print(mol_node.children)
+    return grown_mols, nodes
 
 def get_possible_grow_seeds(mol, base_fragment):
     '''
@@ -333,40 +330,44 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(n_grow_iter, base_fragment, initial_grow_seed, linkers, fragments):
+def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each of
     the current leafs.
+    :param mol_tree: molecular tree that saves all grown molecules
     :param n_grow_iter: number of grow iterations
-    :param base_fragment: start molecule
     :param initial_grow_seed: atom index of base fragment
     :param linkers: list with all linkers
     :param fragments: list with all fragments
-    :return: grown molecules (leafs of the mol tree)
     '''
 
-    # current molecules to continue growing (leafs of the tree)
-    leafs = [base_fragment]
+    # begin grow with base_fragment
     k = 0
+    base_fragment_node = mol_tree.get_root()
+    base_fragment = base_fragment_node.mol
     for i in range(n_grow_iter):
-        print(f'in iteration {i} we have {len(leafs)} leafs')
+        print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
         grown_mols = []
         current_leafs = []
-        for leaf in leafs:
-            # select grow seed, grow mol on seed by one linker, fragment combo and save results in tree
+        current_nodes = []
+        # grow each leaf molecule by all combinations
+        for leaf in mol_tree.get_leafs():
+            # select grow seed, grow mol on seed by one linker_fragment combo and save results in tree
             if i == 0:
-                leaf_node = AnyNode(id='root',mol=leaf)
+                leaf_node = base_fragment_node
                 grow_seed = initial_grow_seed
             else:
-                leaf_node = AnyNode(id=f'{k}',mol=leaf)
-                possible_grow_seeds = get_possible_grow_seeds(leaf, base_fragment)
+                leaf_node = AnyNode(id=f'{k}', mol=leaf)
+                possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment)
                 grow_seed = get_next_grow_seed(possible_grow_seeds)
             # grow all combinations for the current leaf
-            grown_mols += add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, leaf_node)
+            mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments)
+            grown_mols += mols
+            current_nodes += nodes
             k += 1
-        leafs = grown_mols
-    print(f'end leafs {len(leafs)}')
-    return leafs
+        mol_tree.clear_leafs()
+        mol_tree.insert_node(current_nodes)
+        mol_tree.insert_leafs(current_nodes)
 
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
@@ -376,11 +377,11 @@ def main():
     mol = label_base_fragment(mol)
     # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
-    grows = grow_molecule(2, mol, 1, linkers[:2], fragments[:2])
-    print(grows)
-    print(len(grows))
-    # rdkit.Chem.Draw.MolsToGridImage(grows[-450:])
-    # print(rdkit.Chem.Draw.MolsToGridImage(grows[-450:]))
+    root = AnyNode(id='root', mol=mol)
+    tree = Mol_Tree(root)
+    grow_molecule(tree, 2, 1, linkers[:2], fragments[:2])
+    print(len(tree.get_leafs()))
+    print(len(tree.get_nodes()))
 
 if __name__ == '__main__':
     main()

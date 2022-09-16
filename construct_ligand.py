@@ -1,7 +1,7 @@
 from rdkit import Chem
 from rdkit.Chem import AllChem
 import rdkit.Chem.Draw
-import random
+import random, os
 import numpy as np
 import pandas as pd
 from anytree import AnyNode
@@ -338,6 +338,10 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
     k = 0
     base_fragment_node = mol_tree.get_root()
     base_fragment = base_fragment_node.mol
+    # get pose for base fragment
+    dock_leafs([base_fragment_node])
+    base_fragment_score = base_fragment_node.score
+    print(f'The base fragment score is {base_fragment_score}')
     for i in range(n_grow_iter):
         print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
         grown_mols = []
@@ -377,6 +381,11 @@ def write_poses_to_file(mol_tree):
     writes the docking poses of all grown molecules in the molecular tree into a file
     '''
     path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
+    # check if dir is empty
+    if len(os.listdir(path)) > 0:
+        for f in os.listdir(path):
+            os.remove(os.path.join(path, f))
+    # save poses to sdf
     for leaf in mol_tree.get_leafs():
         pose = leaf.plants_pose
         filename = str(leaf.id) + '.sdf'
@@ -390,12 +399,11 @@ def main():
     mol = label_base_fragment(mol)
     # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
-    root = AnyNode(id='root', mol=mol)
+    root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 2, 1, linkers[:2], fragments[:2])
+    grow_molecule(tree, 1, 1, linkers[:2], fragments[:2])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
-    print(root.children[0].plants_pose)
     write_poses_to_file(tree)
 
 if __name__ == '__main__':

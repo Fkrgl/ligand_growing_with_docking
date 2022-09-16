@@ -1,3 +1,9 @@
+"""
+This class implemets a tree data structure that
+1) saves all molecules as nodes
+2) keeps track of the current leafs of the tree
+"""
+
 class Mol_Tree:
     def __init__(self, root):
         self.root = root

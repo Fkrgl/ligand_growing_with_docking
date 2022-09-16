@@ -5,8 +5,11 @@ import pandas as pd
 import shutil
 from openbabel import openbabel
 from rdkit import Chem
+from rdkit.Chem import AllChem
+import construct_ligand
 
 PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+RANKING_FILE = PLANTS + 'output/ranking.csv'
 
 def run_plants():
     '''run plants in a shell as a subprocess'''
@@ -35,6 +38,17 @@ def clear_output_dir():
     if os.path.exists(PLANTS + 'output'):
         shutil.rmtree(PLANTS + 'output')
 
+def write_mol_to_sdf(mol, path):
+    # add hydrogens and optimize molecule
+    mol.UpdatePropertyCache()
+    mol = Chem.AddHs(mol)
+    AllChem.EmbedMolecule(mol)
+    AllChem.MMFFOptimizeMolecule(mol)
+    # write to file
+    w = Chem.SDWriter(path)
+    w.write(mol)
+    w.close()
+
 def convert_mol_files(path, in_format, out_format):
     '''converts the mol file format into another'''
 
@@ -62,6 +76,32 @@ def renew_ligand_file():
     if os.path.exists(PLANTS + 'ligand.mol2'):
         os.remove(PLANTS + 'ligand.mol2')
     shutil.copyfile(PLANTS + 'ligand_original.mol2', PLANTS + 'ligand.mol2')
+
+def dock_molecule(mol):
+    '''
+    function optimizes the molecule, sets up the ligand.mol2 file required and runs PLANTS.
+    :param mol: ligand as mol object
+    :return: best pose with score
+    '''
+    PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+    RANKING_FILE = PLANTS + 'output/ranking.csv'
+
+    mol.UpdatePropertyCache()
+    mol = Chem.AddHs(mol)
+    #print([n.GetSymbol() for n in list(mol.GetAtoms())[atom_idx].GetNeighbors()])
+    AllChem.EmbedMolecule(mol)
+    AllChem.MMFFOptimizeMolecule(mol)
+    # write sdf and convert in mol2
+    write_mol_to_sdf(mol, PLANTS + 'ligand.sdf')
+    convert_mol_files(PLANTS + 'ligand.sdf', 'sdf', 'mol2')
+    # run plants on modified ligand
+    run_plants()
+    pose_file, score = get_best_scoring_pose(RANKING_FILE)
+    # get best pose as rdkit molecule
+    print(f'pose_file: {pose_file}')
+    mol = get_mol_from_mol2file(PLANTS + f'output/{pose_file}')
+    return mol, score
+
 
 def main():
     # run_plants()

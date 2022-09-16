@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from anytree import AnyNode
 from Mol_tree import Mol_Tree
+import run_plants
 
 def label_base_fragment(mol):
     '''
@@ -89,16 +90,6 @@ def choose_next_position(mol):
     print('No carbon found to further extend the chain')
     return -1
 
-def write_mol_to_sdf(mol, path):
-    # add hydrogens and optimize molecule
-    mol.UpdatePropertyCache()
-    mol = Chem.AddHs(mol)
-    AllChem.EmbedMolecule(mol)
-    AllChem.MMFFOptimizeMolecule(mol)
-    # write to file
-    w = Chem.SDWriter(path)
-    w.write(mol)
-    w.close()
 
 def load_libraries(path_frag, path_link):
     """
@@ -157,7 +148,7 @@ def grow_ligand_at_random(smiles, n_iterations):
         AllChem.MMFFOptimizeMolecule(mol)
         mol = Chem.RemoveHs(mol)
 
-    write_mol_to_sdf(mol, './results/modified_compound.sdf')
+    run_plants.write_mol_to_sdf(mol, './results/modified_compound.sdf')
 
 def show_indexed_mol(mol):
     '''
@@ -267,7 +258,7 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     else:
         return None
 
-def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments):
+def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
     :param mol_node: node that contains molecule to grow on
@@ -288,7 +279,9 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                                                    bond_type=Chem.rdchem.BondType.SINGLE)
                 if mol_linker_fragment:
                     grown_mols.append(mol_linker_fragment)
-                    new_node = AnyNode(mol=mol_linker_fragment, parent=mol_node)
+                    node_id = f'{node_id_parent}_{i}_{j}'
+                    new_node = AnyNode(id=node_id, mol=mol_linker_fragment, parent=mol_node, plants_pose=None,
+                                       score=None)
                     nodes.append(new_node)
         else:
             continue
@@ -349,25 +342,45 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
         print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
         grown_mols = []
         current_leafs = []
-        current_nodes = []
         # grow each leaf molecule by all combinations
         for leaf in mol_tree.get_leafs():
             # select grow seed, grow mol on seed by one linker_fragment combo and save results in tree
             if i == 0:
-                leaf_node = base_fragment_node
                 grow_seed = initial_grow_seed
             else:
-                leaf_node = AnyNode(id=f'{k}', mol=leaf)
                 possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment)
                 grow_seed = get_next_grow_seed(possible_grow_seeds)
             # grow all combinations for the current leaf
-            mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments)
+            mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k)
             grown_mols += mols
-            current_nodes += nodes
+            current_leafs += nodes
             k += 1
+        # dock all grown molecules from this iteration (use nodes!)
+        dock_leafs(current_leafs)
+        # insert nodes in tree
         mol_tree.clear_leafs()
-        mol_tree.insert_node(current_nodes)
-        mol_tree.insert_leafs(current_nodes)
+        mol_tree.insert_node(current_leafs)
+        mol_tree.insert_leafs(current_leafs)
+
+def dock_leafs(leaf_nodes):
+    '''
+    function performs docking for each molecule
+    :param leaf_nodes: nodes that contain current grown molecules
+    '''
+    for leaf_node in leaf_nodes:
+        pose, score = run_plants.dock_molecule(leaf_node.mol)
+        leaf_node.plants_pose = pose
+        leaf_node.score = score
+
+def write_poses_to_file(mol_tree):
+    '''
+    writes the docking poses of all grown molecules in the molecular tree into a file
+    '''
+    path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
+    for leaf in mol_tree.get_leafs():
+        pose = leaf.plants_pose
+        filename = str(leaf.id) + '.sdf'
+        run_plants.write_mol_to_sdf(pose, path + filename)
 
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
@@ -382,6 +395,8 @@ def main():
     grow_molecule(tree, 2, 1, linkers[:2], fragments[:2])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
+    print(root.children[0].plants_pose)
+    write_poses_to_file(tree)
 
 if __name__ == '__main__':
     main()

@@ -361,9 +361,16 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
             k += 1
         # dock all grown molecules from this iteration (use nodes!)
         dock_leafs(current_leafs)
-        # insert nodes in tree
+        # insert nodes in tree that have equal or better score than base fragment
+        # high_scoring_leafs = select_higher_scoring_ligands(current_leafs, base_fragment_score)
+        # if len(high_scoring_leafs) == 0:
+        #     # later: if no improvement in one round is made, try to continue with another node that has a good score.
+        #     print('\nNo score improvement could be achieved.\n')
+        #     return
         mol_tree.clear_leafs()
+        # insert all leafs in tree
         mol_tree.insert_node(current_leafs)
+        # consider only high scoring leafs as leafs
         mol_tree.insert_leafs(current_leafs)
 
 def dock_leafs(leaf_nodes):
@@ -386,10 +393,20 @@ def write_poses_to_file(mol_tree):
         for f in os.listdir(path):
             os.remove(os.path.join(path, f))
     # save poses to sdf
-    for leaf in mol_tree.get_leafs():
+    leafs = mol_tree.get_leafs() + [mol_tree.get_root()]
+    for leaf in leafs:
         pose = leaf.plants_pose
         filename = str(leaf.id) + '.sdf'
         run_plants.write_mol_to_sdf(pose, path + filename)
+
+def select_higher_scoring_ligands(leafs, base_fragment_score):
+    '''
+    given a list of grown molecules, the function returns all ligands that have an equal or better score than the base
+    fragment
+    :return: leaf nodes with better (or equal) score
+    '''
+    high_scoring_leafs = [leaf for leaf in leafs if leaf.score <= base_fragment_score]
+    return high_scoring_leafs
 
 def main():
     smiles = 'C1=CC=C2C(=C1)C=CN2'
@@ -401,10 +418,13 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 1, linkers[:2], fragments[:2])
+    grow_molecule(tree, 1, 1, linkers[:3], fragments[:3])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)
+    print(f'score base fragment: {root.score}')
+    for nodes in tree.get_leafs():
+        print(nodes.score)
 
 if __name__ == '__main__':
     main()

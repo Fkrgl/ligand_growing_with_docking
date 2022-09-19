@@ -29,6 +29,7 @@ def get_best_scoring_pose(ranking_file):
 
     ranking = pd.read_csv(ranking_file)
     pose_file = ranking.iloc[0]['LIGAND_ENTRY'] + '.mol2'
+    print(pose_file)
     score_norm_heavatoms = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
     return pose_file, score_norm_heavatoms
 
@@ -39,12 +40,6 @@ def clear_output_dir():
         shutil.rmtree(PLANTS + 'output')
 
 def write_mol_to_sdf(mol, path):
-    # add hydrogens and optimize molecule
-    mol.UpdatePropertyCache()
-    mol = Chem.AddHs(mol)
-    AllChem.EmbedMolecule(mol)
-    AllChem.MMFFOptimizeMolecule(mol)
-    # write to file
     w = Chem.SDWriter(path)
     w.write(mol)
     w.close()
@@ -100,15 +95,16 @@ def dock_molecule(mol):
     # get best pose as rdkit molecule
     print(f'pose_file: {pose_file}')
     mol = get_mol_from_mol2file(PLANTS + f'output/{pose_file}')
+    print(mol.GetConformer().GetPositions())
     return mol, score
 
 
 def main():
-    # run_plants()
     # ranking_file = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/ranking.csv'
     # print(get_best_score(ranking_file))
-    path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand.sdf'
-    convert_mol_files(path, 'sdf', 'mol2')
+    start_mol = Chem.MolFromSmiles('C1=CC=C2C(=C1)C=CN2')
+    mol, score = dock_molecule(start_mol)
+    print(mol.GetConformer().GetPositions())
 
 if __name__ == '__main__':
     main()

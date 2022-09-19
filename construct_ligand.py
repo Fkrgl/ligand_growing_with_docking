@@ -362,17 +362,17 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
         # dock all grown molecules from this iteration (use nodes!)
         dock_leafs(current_leafs)
         # insert nodes in tree that have equal or better score than base fragment
-        filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
-        print(f'Filtered leafs: {filtered_leafs}')
-        if len(filtered_leafs) == 0:
-            # later: if no improvement in one round is made, try to continue with another node that has a good score.
-            print('\nNo score improvement could be achieved.\n')
-            return
+        # filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
+        # print(f'Filtered leafs: {filtered_leafs}')
+        # if len(filtered_leafs) == 0:
+        #     # later: if no improvement in one round is made, try to continue with another node that has a good score.
+        #     print('\nNo score improvement could be achieved.\n')
+        #     return
         mol_tree.clear_leafs()
         # insert all leafs in tree
         mol_tree.insert_node(current_leafs)
         # consider only filtered leafs as candidates to continue with
-        mol_tree.insert_leafs(filtered_leafs)
+        mol_tree.insert_leafs(current_leafs)
 
 def dock_leafs(leaf_nodes):
     '''
@@ -381,6 +381,7 @@ def dock_leafs(leaf_nodes):
     '''
     for leaf_node in leaf_nodes:
         pose, score = run_plants.dock_molecule(leaf_node.mol)
+        print(pose.GetConformer().GetPositions())
         leaf_node.plants_pose = pose
         leaf_node.score = score
 
@@ -395,8 +396,10 @@ def write_poses_to_file(mol_tree):
             os.remove(os.path.join(path, f))
     # save poses to sdf
     leafs = mol_tree.get_leafs() + [mol_tree.get_root()]
+    print("function write_poses_to_file")
     for leaf in leafs:
         pose = leaf.plants_pose
+        print(pose.GetConformer().GetPositions())
         filename = str(leaf.id) + '.sdf'
         run_plants.write_mol_to_sdf(pose, path + filename)
 
@@ -438,7 +441,7 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def filter_leafs(leafs, base_fragment_node, cut_off=3.0):
+def filter_leafs(leafs, base_fragment_node, cut_off=3):
     '''
     function returns only the leafs that have:
     1) RMSD with the base fragment below a certain threshold
@@ -450,7 +453,7 @@ def filter_leafs(leafs, base_fragment_node, cut_off=3.0):
     base_fragment = base_fragment_node.mol
     base_fragment_score = base_fragment_node.score
     for leaf in leafs:
-        if leaf.score <= base_fragment_score*0.6:
+        if leaf.score <= base_fragment_score*0.8:
             rmsd = calc_RMSD(base_fragment, leaf.mol)
             if rmsd <= cut_off:
                 filtered_leafs.append(leaf)
@@ -458,9 +461,9 @@ def filter_leafs(leafs, base_fragment_node, cut_off=3.0):
     return filtered_leafs
 
 def main():
-    smiles = 'C1=CC=C2C(=C1)C=CN2'
+    #smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
-    #smiles = 'C1CC1'
+    smiles = 'C1CC1'
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
@@ -468,7 +471,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 1, [linkers[2]], fragments[:8])
+    grow_molecule(tree, 1, 1, linkers[:1], fragments[:2])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

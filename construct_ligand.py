@@ -409,7 +409,7 @@ def select_higher_scoring_ligands(leafs, base_fragment_score):
     return high_scoring_leafs
 
 
-def get_base_fragment_ideces(mol, base_fragment):
+def get_base_fragment_indices(mol, base_fragment):
     '''
     searches for the base fragment in the mol and returns its atom indeces
     '''
@@ -419,7 +419,7 @@ def get_base_fragment_ideces(mol, base_fragment):
     match_idx = match_idx[0]
     return match_idx
 
-def calc_RMSD(base_fragment, grown_mol, substructure_idx):
+def calc_RMSD(base_fragment, grown_mol):
     '''
     calculates RMSD between the atoms of two molecules specified by index
     :param base_fragment
@@ -427,6 +427,7 @@ def calc_RMSD(base_fragment, grown_mol, substructure_idx):
     :param substructure_idx: indeces of atoms that belong to the base fragment in the grown molecule
     :return:
     '''
+    substructure_idx = get_base_fragment_indices(grown_mol, base_fragment)
     base_fragment = Chem.RemoveHs(base_fragment)
     grown_mol = Chem.RemoveHs(grown_mol)
     n = len(base_fragment.GetAtoms())

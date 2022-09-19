@@ -194,7 +194,7 @@ def get_linker_atom_index(combo, fragment):
     '''
     elements = ['C', 'N']
     possible_linker_idx = list(combo.GetSubstructMatches(fragment))
-    # more that one substructure match detected
+    # more than one substructure match detected
     if len(possible_linker_idx) > 1:
         # select match containing highest atom indices (this belongs to the yet unconnceted fragment)
         possible_linker_idx.sort(key=lambda x: x[0], reverse=True)
@@ -408,10 +408,40 @@ def select_higher_scoring_ligands(leafs, base_fragment_score):
     high_scoring_leafs = [leaf for leaf in leafs if leaf.score <= base_fragment_score]
     return high_scoring_leafs
 
+
+def get_base_fragment_ideces(mol, base_fragment):
+    '''
+    searches for the base fragment in the mol and returns its atom indeces
+    '''
+    match_idx = list(mol.GetSubstructMatches(base_fragment))
+    # fragment with lowest atom indeces is assumed to be base fragment
+    match_idx.sort(key=lambda x: x[0])
+    match_idx = match_idx[0]
+    return match_idx
+
+def calc_RMSD(base_fragment, grown_mol, substructure_idx):
+    '''
+    calculates RMSD between the atoms of two molecules specified by index
+    :param base_fragment
+    :param grown_mol
+    :param substructure_idx: indeces of atoms that belong to the base fragment in the grown molecule
+    :return:
+    '''
+    base_fragment = Chem.RemoveHs(base_fragment)
+    grown_mol = Chem.RemoveHs(grown_mol)
+    n = len(base_fragment.GetAtoms())
+    rmsd = 0
+    for i in substructure_idx:
+        p_base = base_fragment.GetConformer().GetAtomPosition(i)
+        p_grow = grown_mol.GetConformer().GetAtomPosition(i)
+        rmsd += p_base.Distance(p_grow)**2
+    rmsd = np.sqrt(1/n * rmsd)
+    return rmsd
+
 def main():
-    #smiles = 'C1=CC=C2C(=C1)C=CN2'
+    smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
-    smiles = 'C1CC1'
+    #smiles = 'C1CC1'
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
@@ -419,7 +449,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 2, 1, [linkers[0]], fragments[:3])
+    grow_molecule(tree, 3, 1, [linkers[2]], fragments[:3])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

@@ -93,9 +93,7 @@ def dock_molecule(mol):
     run_plants()
     pose_file, score = get_best_scoring_pose(RANKING_FILE)
     # get best pose as rdkit molecule
-    print(f'pose_file: {pose_file}')
     mol = get_mol_from_mol2file(PLANTS + f'output/{pose_file}')
-    print(mol.GetConformer().GetPositions())
     return mol, score
 
 

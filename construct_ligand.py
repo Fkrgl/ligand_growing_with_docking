@@ -325,8 +325,8 @@ def get_next_grow_seed(possible_grow_seeds):
 
 def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
     '''
-    function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each of
-    the current leafs.
+    function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
+    possible atom in the current leafs (excluding the base fragment).
     :param mol_tree: molecular tree that saves all grown molecules
     :param n_grow_iter: number of grow iterations
     :param initial_grow_seed: atom index of base fragment
@@ -350,15 +350,16 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
         for leaf in mol_tree.get_leafs():
             # select grow seed, grow mol on seed by one linker_fragment combo and save results in tree
             if i == 0:
-                grow_seed = initial_grow_seed
+                possible_grow_seeds = [initial_grow_seed]
             else:
                 possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment)
-                grow_seed = get_next_grow_seed(possible_grow_seeds)
-            # grow all combinations for the current leaf
-            mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k)
-            grown_mols += mols
-            current_leafs += nodes
-            k += 1
+            # grow on each possible grow seed on the current leaf
+            for grow_seed in possible_grow_seeds:
+                # grow all combinations for the current leaf
+                mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k)
+                grown_mols += mols
+                current_leafs += nodes
+                k += 1
         # dock all grown molecules from this iteration (use nodes!)
         dock_leafs(current_leafs)
         # insert nodes in tree that have equal or better score than base fragment
@@ -431,7 +432,7 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def filter_leafs(leafs, base_fragment_node, cut_off=15):
+def filter_leafs(leafs, base_fragment_node, cut_off=100):
     '''
     function returns only the leafs that have:
     1) RMSD with the base fragment below a certain threshold
@@ -443,7 +444,7 @@ def filter_leafs(leafs, base_fragment_node, cut_off=15):
     base_fragment = base_fragment_node.plants_pose
     base_fragment_score = base_fragment_node.score
     for leaf in leafs:
-        if leaf.score <= base_fragment_score*0.2:
+        if leaf.score <= base_fragment_score*0.01:
             rmsd = calc_RMSD(base_fragment, leaf.plants_pose)
             print(f"RMSD is {rmsd}")
             if rmsd <= cut_off:
@@ -462,7 +463,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 1, [linkers[0]], fragments[:2])
+    grow_molecule(tree, 2, 1, [linkers[0]], [fragments[20], fragments[26]])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

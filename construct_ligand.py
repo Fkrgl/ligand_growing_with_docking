@@ -184,14 +184,16 @@ def get_linker_atom_and_neighbor(mol, linker_atom_smiles):
     linker_atom_neighbor = linker_atom.GetNeighbors()[0]
     return linker_atom, linker_atom_neighbor
 
+
 def get_linker_atom_index(combo, fragment):
     '''
     Given combined but not yet bonded molecules, search for possible atoms of the fragment that can from a bond to the
     growing molecule
     :param combo: combined molecules in one object
     :param fragment: fragment (substituent) that is added to the linker
-    :return: atom index of fragment atom that can from a bond to the linker group
+    :return: atom index of fragment atoms that can from a bond to the linker group
     '''
+
     elements = ['C', 'N']
     possible_linker_idx = list(combo.GetSubstructMatches(fragment))
     # more than one substructure match detected
@@ -202,12 +204,14 @@ def get_linker_atom_index(combo, fragment):
     # only one match
     else:
         possible_linker_idx = possible_linker_idx[0]
-    # select the first atom that is a carbon and has at least one hydrogen
+    # select all carbon and nitrogens that have at least one hydrogen
+    all_possible_linkers = []
     for linker_idx in possible_linker_idx:
         linker_atom = combo.GetAtomWithIdx(linker_idx)
         if linker_atom.GetSymbol() in elements and linker_atom.GetTotalNumHs() > 0:
-            return linker_idx
-    return None
+            all_possible_linkers.append(linker_idx)
+    return all_possible_linkers
+
 
 def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondType.SINGLE):
     '''
@@ -222,20 +226,10 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     # combine both molecules into one
     combo = Chem.CombineMols(mol, fragment)
     # select the linker atom to fuse molecules
-    linker_atom_symbol = '[Au]'
     if mode == 'fragment':
-        # for fragments, also select a atom in the fragemnt for linkage
         linker_atom_symbol = '[Hg]'
-        atom_idx = get_linker_atom_index(combo, fragment)
-        if atom_idx == None:
-            show_indexed_mol(combo)
-            show_indexed_mol(fragment)
-            return
-    # for linker, check if a atom index of the mol is specified
     elif mode == 'linker':
-        if atom_idx is None:
-            print('no atom index of the molecule is specified!')
-            return
+        linker_atom_symbol = '[Au]'
     else:
         print('mode does not exist. Please select \'linker\' or \'fragment\' as mode.')
         return
@@ -270,23 +264,29 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
     grown_mols = []
     nodes = []
     mol = mol_node.mol
+    # go through all linkers
     for i, linker in enumerate(linkers):
         mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
         # check if molecule linker bond worked
         if mol_linker:
+            # go through all fragments
             for j, fragment in enumerate(fragments):
-                mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment',
-                                                   bond_type=Chem.rdchem.BondType.SINGLE)
-                if mol_linker_fragment:
-                    grown_mols.append(mol_linker_fragment)
-                    node_id = f'{node_id_parent}_{i}_{j}'
-                    new_node = AnyNode(id=node_id, mol=mol_linker_fragment, parent=mol_node, plants_pose=None,
-                                       score=None)
-                    nodes.append(new_node)
+                # go through all fragment positions
+                combo = Chem.CombineMols(mol_linker, fragment)
+                fragment_atom_idx = get_linker_atom_index(combo, fragment)
+                for p, atom_idx in enumerate(fragment_atom_idx):
+                    mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', atom_idx=atom_idx,
+                                                       bond_type=Chem.rdchem.BondType.SINGLE)
+                    # check if fragment-linker bond worked
+                    if mol_linker_fragment:
+                        grown_mols.append(mol_linker_fragment)
+                        node_id = f'{node_id_parent}_{i}_{j}_{p}'
+                        new_node = AnyNode(id=node_id, mol=mol_linker_fragment, parent=mol_node, plants_pose=None,
+                                           score=None)
+                        nodes.append(new_node)
         else:
             continue
     mol_node.children = nodes
-    print(mol_node.children)
     return grown_mols, nodes
 
 def get_possible_grow_seeds(mol, base_fragment):
@@ -422,19 +422,11 @@ def calc_RMSD(base_fragment, grown_mol):
     substructure_idx = get_base_fragment_indices(grown_mol, base_fragment)
     base_fragment = Chem.RemoveHs(base_fragment)
     grown_mol = Chem.RemoveHs(grown_mol)
-    #AllChem.EmbedMolecule(base_fragment)
     n = len(base_fragment.GetAtoms())
     rmsd = 0
     for i in substructure_idx:
-        # catch conformer error and embed mols to avoid it
-        # try:
         p_base = base_fragment.GetConformer().GetAtomPosition(i)
         p_grow = grown_mol.GetConformer().GetAtomPosition(i)
-        # except:
-        #     AllChem.EmbedMolecule(base_fragment)
-        #     AllChem.EmbedMolecule(grown_mol)
-        #     p_base = base_fragment.GetConformer().GetAtomPosition(i)
-        #     p_grow = grown_mol.GetConformer().GetAtomPosition(i)
         rmsd += p_base.Distance(p_grow)**2
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
@@ -470,7 +462,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 3, 1, linkers[:2], fragments[:2])
+    grow_molecule(tree, 1, 1, [linkers[0]], fragments[:2])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

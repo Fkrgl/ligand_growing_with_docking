@@ -454,8 +454,8 @@ def filter_leafs(leafs, base_fragment_node, cut_off=100):
 
 def main():
     #smiles = 'C1=CC=C2C(=C1)C=CN2'
-    #smiles = 'c1cc(CCCO)ccc1'
-    smiles = 'c1ccccc1'
+    smiles = 'c1cc(CCCO)ccc1'
+    #smiles = 'c1ccccc1'
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
@@ -463,7 +463,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 2, 1, [linkers[0]], [fragments[20], fragments[26]])
+    grow_molecule(tree, 1, 9, [linkers[0]], [fragments[20], fragments[26]])
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

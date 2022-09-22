@@ -4,16 +4,49 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from construct_ligand import get_base_fragment_indices
 
+def isRingAromatic(mol,bondRing):
+    '''
+    checks each bond of a ring for aromaticity
+    :param mol: molecule that contains the ring
+    :param bondRing: bond indices of ring
+    '''
+    for id in bondRing:
+        if not mol.GetBondWithIdx(id).GetIsAromatic():
+             return False
+    return True
 
-def align_to_basefragment(mol, base_fragment):
+def get_aromatic_rings(mol):
     '''
-    function alignes molecule to the base fragment an returns the aligned molecule
+    retruns the indices of all atoms of aromatic ring systems in the molecule
     '''
+    aromatic_ring_atom_idx = set()
+    rings = mol.GetRingInfo()
+    # check all bonds for aromaticity
+    for ring in rings.BondRings():
+        print(ring)
+        if isRingAromatic(mol, ring):
+            # get atom indices of aromatic bonds
+            for bond_idx in ring:
+                bond = mol.GetBondWithIdx(bond_idx)
+                aromatic_ring_atom_idx.add(bond.GetBeginAtomIdx())
+                aromatic_ring_atom_idx.add(bond.GetEndAtomIdx())
+    return list(aromatic_ring_atom_idx)
+
+def align_to_basefragment(mol, base_fragment, aromatic_ring_idx):
+    '''
+    function aligns molecule to the aromatic ring atoms of the base fragment an returns the aligned molecule
+    :param mol: grown molecule
+    :param base_fragment:
+    :param aromatic_ring_idx:
+    :return:
+    '''
+    # remove hydrogens
+    mol = rdkit.Chem.rdmolops.RemoveHs(mol)
+    base_fragment = rdkit.Chem.rdmolops.RemoveHs(base_fragment)
     mol_aligned = Chem.Mol(mol)
-    # get substructure match index
-    sub_idx = get_base_fragment_indices(mol, base_fragment)
-    # get Affine Transformation Matrix
-    alignment = rdkit.Chem.rdMolAlign.GetAlignmentTransform(mol, base_fragment, atomMap=list(zip(sub_idx, sub_idx)))
+    # get Affine Transformation Matrix M
+    alignment = rdkit.Chem.rdMolAlign.GetAlignmentTransform(mol, base_fragment,
+                                                            atomMap=list(zip(aromatic_ring_idx, aromatic_ring_idx)))
     M = alignment[1]
     # built matrix from mol coords
     n = len(mol.GetAtoms())
@@ -23,7 +56,6 @@ def align_to_basefragment(mol, base_fragment):
     transformed = M.dot(mol_pos_ones.T)
     # adapt atom coords of mol
     for i in range(n):
-        pos = mol_aligned.GetConformer().GetAtomPosition(i)
         mol_aligned.GetConformer().SetAtomPosition(i, transformed[:-1,i])
     return mol_aligned
 

@@ -7,6 +7,7 @@ import pandas as pd
 from anytree import AnyNode
 from Mol_tree import Mol_Tree
 import run_plants
+import decorate_ligand
 
 def label_base_fragment(mol):
     '''
@@ -252,7 +253,8 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     else:
         return None
 
-def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent):
+def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent, aromatic_idx_base,
+                                         base_fragment, protein_coords):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
     :param mol_node: node that contains molecule to grow on
@@ -261,6 +263,12 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
     :param fragments: list of all fragments
     :return: all possible combination as molecules and nodes
     '''
+    bond_length = {'CO': 1.43,
+                   'CC': 1.54,
+                   'CN': 1.43}
+    atoms_to_functionals = {'C': ['[Au]C(=O)O', '[Au]C'],
+                            'O': ['[Au]O'],
+                            'N': ['[Au]N']}
     grown_mols = []
     nodes = []
     mol = mol_node.mol
@@ -279,11 +287,32 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                                                        bond_type=Chem.rdchem.BondType.SINGLE)
                     # check if fragment-linker bond worked
                     if mol_linker_fragment:
-                        grown_mols.append(mol_linker_fragment)
-                        node_id = f'{node_id_parent}_{i}_{j}_{p}'
-                        new_node = AnyNode(id=node_id, mol=mol_linker_fragment, parent=mol_node, plants_pose=None,
-                                           score=None)
-                        nodes.append(new_node)
+                        ### decorate ###########################
+                        # 1)
+                        # align mol to base fragment -> get aligned mol
+                        # 2)
+                        # get all aromatic atoms that have at least one hydrogen
+                        # 3)
+                        # generate each decoration and save them as a mol
+
+                        # align mol to base fragment
+                        mol_linker_fragment_aligned = decorate_ligand.align_to_basefragment(mol_linker_fragment,
+                                                                                            base_fragment,
+                                                                                            aromatic_idx_base)
+                        # generate all decorations
+                        mol_linker_fragment_decorated = decorate_ligand.decorate_ligand(mol_linker_fragment_aligned,
+                                                                                        aromatic_idx_base, protein_coords,
+                                                                                        bond_length, atoms_to_functionals)
+                        # add undecorated mol to list
+                        mol_linker_fragment_decorated.append(mol_linker_fragment)
+                        # check if each decorated mol is valid
+                        for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
+                            if mol_linker_fragment_decorated:
+                                grown_mols.append(mol_linker_fragment_aligned)
+                                node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}'
+                                new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
+                                                   score=None)
+                                nodes.append(new_node)
         else:
             continue
     mol_node.children = nodes
@@ -323,7 +352,7 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
+def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -356,7 +385,8 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments):
             # grow on each possible grow seed on the current leaf
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
-                mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k)
+                mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k,
+                                                                   aromatic_atom_idx, base_fragment, protein_coords)
                 grown_mols += mols
                 current_leafs += nodes
                 k += 1
@@ -452,18 +482,30 @@ def filter_leafs(leafs, base_fragment_node, cut_off=100):
                 print(f'RMSD={rmsd}, score={leaf.score}')
     return filtered_leafs
 
+
+def read_protein_coords(protein_mol2_path):
+    out_path = run_plants.convert_mol_files(protein_mol2_path, 'mol2', 'sdf')
+    print(out_path)
+    protein = Chem.MolFromMolFile(out_path)
+    protein = Chem.RemoveHs(protein)
+    protein_coords = protein.GetConformer().GetPositions()
+    return protein_coords
+
 def main():
     #smiles = 'C1=CC=C2C(=C1)C=CN2'
     smiles = 'c1cc(CCCO)ccc1'
     #smiles = 'c1ccccc1'
+    protein_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/protein_no_water.mol2'
+    protein_coords = read_protein_coords(protein_mol2_path)
     mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
+    aromatic_atom_idx = decorate_ligand.get_aromatic_rings(mol)
     # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 9, [linkers[0]], [fragments[20], fragments[26]])
+    grow_molecule(tree, 1, 9, [linkers[0]], [fragments[20], fragments[26]], aromatic_atom_idx, protein_coords)
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

@@ -163,21 +163,27 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
                 else:
                     # go through each functional group with this linker atom
                     for functional in atoms_to_functionals[group]:
-                        # give multiple tries
-                        while True:
+                        # give max_attempts attempts to add functional group
+                        attempt = 0
+                        max_attempts = 10
+                        while attempt < max_attempts:
                             decorated_mol = add_functional_group(mol, idx, functional, '[Au]')
                             # check if something was returned
                             if decorated_mol:
                                 mol_with_functionals.append(decorated_mol)
+                                break
+                            attempt += 1
     return mol_with_functionals
 
 
 def main():
     base_fragment_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/root.sdf'
-    grown_mol_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/1_0_0_0.sdf'
+    grown_mol_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/0_0_0_0.sdf'
     base_fragment = Chem.MolFromMolFile(base_fragment_path)
     grown_mol = Chem.MolFromMolFile(grown_mol_path)
-    align_to_basefragment(grown_mol, base_fragment)
+    aromatic_ring_idx = get_aromatic_rings(base_fragment)
+    print(f'conformer = {base_fragment.GetConformer()}')
+    align_to_basefragment(grown_mol, base_fragment, aromatic_ring_idx)
 
 if __name__ == '__main__':
     main()

@@ -55,6 +55,15 @@ def remove_bonded_hydrogen(mol, atom_idx):
             mol.RemoveAtom(neighbor.GetIdx())
             return mol
 
+def compute_3D_coordinates(mol):
+    '''
+    function calculates 3D coordinates for a molecule (this produces a conformer)
+    '''
+    mol = Chem.AddHs(mol)
+    AllChem.EmbedMolecule(mol)
+    AllChem.MMFFOptimizeMolecule(mol)
+    return mol
+
 def choose_next_position(mol):
     '''
     choose the position in the atom on which the next fragment is linked
@@ -254,7 +263,7 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
         return None
 
 def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent, aromatic_idx_base,
-                                         base_fragment, protein_coords):
+                                         base_fragment_node, protein_coords):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
     :param mol_node: node that contains molecule to grow on
@@ -279,15 +288,17 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
         if mol_linker:
             # go through all fragments
             for j, fragment in enumerate(fragments):
-                # go through all fragment positions
                 combo = Chem.CombineMols(mol_linker, fragment)
                 fragment_atom_idx = get_linker_atom_index(combo, fragment)
+                # go through all fragment positions
                 for p, atom_idx in enumerate(fragment_atom_idx):
                     mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', atom_idx=atom_idx,
                                                        bond_type=Chem.rdchem.BondType.SINGLE)
                     # check if fragment-linker bond worked
                     if mol_linker_fragment:
                         ### decorate ###########################
+                        # 0)
+                        # generate conformers for base fragment and molecule to be able to align them
                         # 1)
                         # align mol to base fragment -> get aligned mol
                         # 2)
@@ -295,21 +306,26 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                         # 3)
                         # generate each decoration and save them as a mol
 
+                        # get conformers
+                        base_fragment_conformer = base_fragment_node.plants_pose
+                        mol_linker_fragment_conformer = compute_3D_coordinates(mol_linker_fragment)
                         # align mol to base fragment
-                        show_indexed_mol(mol_linker_fragment)
-                        show_indexed_mol(base_fragment)
-                        mol_linker_fragment_aligned = align_to_basefragment(mol_linker_fragment, base_fragment,
+                        mol_linker_fragment_aligned = align_to_basefragment(mol_linker_fragment_conformer, base_fragment_conformer,
                                                                             aromatic_idx_base)
                         # generate all decorations
                         mol_linker_fragment_decorated = decorate_ligand(mol_linker_fragment_aligned, aromatic_idx_base,
                                                                         protein_coords, bond_length,
                                                                         atoms_to_functionals)
+                        # for deco in mol_linker_fragment_decorated:
+                        #     show_indexed_mol(deco)
+                        print(f'Decoration_length = {len(mol_linker_fragment_decorated)}')
                         # add undecorated mol to list
                         mol_linker_fragment_decorated.append(mol_linker_fragment)
                         # check if each decorated mol is valid
                         for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
                             if mol_linker_fragment_decorated:
                                 grown_mols.append(mol_linker_fragment_aligned)
+                                # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]
                                 node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}'
                                 new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
                                                    score=None)
@@ -387,11 +403,13 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
                 mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k,
-                                                                   aromatic_atom_idx, base_fragment, protein_coords)
+                                                                   aromatic_atom_idx, base_fragment_node,
+                                                                   protein_coords)
                 grown_mols += mols
                 current_leafs += nodes
                 k += 1
         # dock all grown molecules from this iteration (use nodes!)
+        print(len(current_leafs))
         dock_leafs(current_leafs)
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
@@ -526,9 +544,9 @@ def get_aromatic_rings(mol):
 def align_to_basefragment(mol, base_fragment, aromatic_ring_idx):
     '''
     function aligns molecule to the aromatic ring atoms of the base fragment an returns the aligned molecule
-    :param mol: grown molecule
-    :param base_fragment:
-    :param aromatic_ring_idx:
+    :param mol: grown molecule with 3D conformation
+    :param base_fragment: base fragment with 3D conformation
+    :param aromatic_ring_idx: indices to decorate on
     :return:
     '''
     # remove hydrogens
@@ -536,8 +554,6 @@ def align_to_basefragment(mol, base_fragment, aromatic_ring_idx):
     base_fragment = rdkit.Chem.RemoveHs(base_fragment)
     mol_aligned = Chem.Mol(mol)
     # get Affine Transformation Matrix M
-    #print(f'Mol = {mol.GetConformer()}')
-    print(f'base fragment= {base_fragment.plants_pose.GetConformer()}')
     print(f'aromatic ring index: {aromatic_ring_idx}')
     alignment = rdkit.Chem.rdMolAlign.GetAlignmentTransform(mol, base_fragment,
                                                             atomMap=list(zip(aromatic_ring_idx, aromatic_ring_idx)))
@@ -598,6 +614,7 @@ def add_functional_group(mol, pos, substituent_smiles, linker_atom_symbol, bond_
     # substitute one of the H atoms
     for neighbor in mol.GetAtomWithIdx(pos).GetNeighbors():
         if neighbor.GetSymbol() == 'H':
+            neigbor_atom = neighbor
             neighbor_idx = neighbor.GetIdx()
             mol.Compute2DCoords()
             substituent = Chem.MolFromSmiles(substituent_smiles)
@@ -613,12 +630,15 @@ def add_functional_group(mol, pos, substituent_smiles, linker_atom_symbol, bond_
             mol = Chem.RWMol(mol)
             mol.RemoveBond(linker_atom.GetIdx(), linker_atom_neighbor.GetIdx())
             mol.RemoveAtom(linker_atom.GetIdx())
+            print(f'neighbor={neighbor}')
+            print(f'neighbor idx = {neighbor_idx}')
+            # search neighbor again, index is confused somehow (the neighbor from the for loop is no longer the right
+            # atom)
+            for n in mol.GetAtomWithIdx(pos).GetNeighbors():
+                if n.GetSymbol() == 'H':
+                    neighbor = n
             # remove hydrogen and its bond to the fragment
-            if mol.GetAtomWithIdx(neighbor.GetIdx()).GetSymbol() != 'H':
-                for n in mol.GetAtomWithIdx(pos).GetNeighbors():
-                    if n.GetSymbol() == 'H':
-                        neighbor = n
-            mol.RemoveBond(pos , neighbor.GetIdx())
+            mol.RemoveBond(pos, neighbor.GetIdx())
             mol.RemoveAtom(neighbor.GetIdx())
             mol.Compute2DCoords()
             # check if mol is valid
@@ -641,27 +661,38 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
     '''
     function adds functional groups to all aromatic ring atoms if they do not clash with any protein atoms
     '''
+    print('decorate ligand!!!!!!!!!')
     mol_with_functionals = []
+    #show_indexed_mol(mol)
+    mol = Chem.AddHs(mol)
+
     group_atoms = ['C', 'O', 'N']
     for idx in aromatic_atom_idx:
         # check if atom has hydrogen as neighbor
         neighbors = [neighbor.GetSymbol() for neighbor in mol.GetAtomWithIdx(idx).GetNeighbors()]
+        print(neighbors)
         if 'H' in neighbors:
             for group in group_atoms:
                 group_pos = calc_group_position(mol, idx, bond_length['C' + group])
                 # check if coords of group would clash
                 if has_spacial_neighbors(group_pos, protein_coords):
+                    print('has spacial neighbors!')
                     continue
                 # no clashes: add functional groups to mol
                 else:
+                    print('no clash!')
                     # go through each functional group with this linker atom
                     for functional in atoms_to_functionals[group]:
-                        # give multiple tries
-                        while True:
+                        # give max_attempts attempts to add functional group
+                        attempt = 0
+                        max_attempts = 10
+                        while attempt < max_attempts:
                             decorated_mol = add_functional_group(mol, idx, functional, '[Au]')
                             # check if something was returned
                             if decorated_mol:
                                 mol_with_functionals.append(decorated_mol)
+                                break
+                            attempt += 1
     return mol_with_functionals
 
 # ===================================================== MAIN  ======================================================== #

@@ -35,16 +35,6 @@ def add_group(mol, atom_type, atom_idx):
     mol.AddBond(int(atom_idx), int(index_added_atom), Chem.BondType.SINGLE)
     return mol
 
-def add_linker(atom_idx, linker, mol):
-    """
-    adds a linker group on a specified position in the molecule
-    :param atom_idx: index of atom that is bound to the linker group
-    :param linker: linker group
-    :param mol: molecule that is modified
-    """
-    if type(mol) != Chem.rdchem.RWMol:
-        mol = Chem.RWMol(mol)
-
 
 def remove_bonded_hydrogen(mol, atom_idx):
     '''given an atom, the function deletes an existing bonded hydrogen and the bond '''
@@ -250,8 +240,6 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     # add bond between linker and neighbor of au atom
     print(atom_idx, linker_atom_neighbor.GetIdx())
     print(f'atom index={atom_idx}')
-    show_indexed_mol(mol)
-    show_indexed_mol(combo)
     edcombo.AddBond(atom_idx, linker_atom_neighbor.GetIdx(), order=bond_type)
 
     # remove AU and its bond to the linker
@@ -509,9 +497,11 @@ def filter_leafs(leafs, base_fragment_node, cut_off=100):
 def read_protein_coords(protein_mol2_path):
     out_path = run_plants.convert_mol_files(protein_mol2_path, 'mol2', 'sdf')
     print(out_path)
-    protein = Chem.MolFromMolFile(out_path)
-    protein = Chem.RemoveHs(protein)
+    protein = Chem.MolFromMolFile(out_path, sanitize=False)
+    print(f'protein: {protein}')
+    protein = Chem.RemoveHs(protein, sanitize=False)
     protein_coords = protein.GetConformer().GetPositions()
+    print(protein_coords)
     return protein_coords
 
 
@@ -667,7 +657,6 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
     '''
     print('decorate ligand!!!!!!!!!')
     mol_with_functionals = []
-    #show_indexed_mol(mol)
     mol = Chem.AddHs(mol)
 
     group_atoms = ['C', 'O', 'N']
@@ -702,12 +691,15 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
 # ===================================================== MAIN  ======================================================== #
 
 def main():
-    smiles = 'C1=CC=C2C(=C1)C=CN2'
+    #smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
     #smiles = 'c1ccccc1'
+    ligand_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand.mol2'
+    mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
+    show_indexed_mol(mol)
     protein_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/protein_no_water.mol2'
     protein_coords = read_protein_coords(protein_mol2_path)
-    mol = Chem.MolFromSmiles(smiles)
+    #mol = Chem.MolFromSmiles(smiles)
     print(mol)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
@@ -715,7 +707,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20], fragments[26]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 0, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

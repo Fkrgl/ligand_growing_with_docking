@@ -248,6 +248,10 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     # make combo editable
     edcombo = Chem.EditableMol(combo)
     # add bond between linker and neighbor of au atom
+    print(atom_idx, linker_atom_neighbor.GetIdx())
+    print(f'atom index={atom_idx}')
+    show_indexed_mol(mol)
+    show_indexed_mol(combo)
     edcombo.AddBond(atom_idx, linker_atom_neighbor.GetIdx(), order=bond_type)
 
     # remove AU and its bond to the linker
@@ -698,8 +702,8 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
 # ===================================================== MAIN  ======================================================== #
 
 def main():
-    #smiles = 'C1=CC=C2C(=C1)C=CN2'
-    smiles = 'c1cc(CCCO)ccc1'
+    smiles = 'C1=CC=C2C(=C1)C=CN2'
+    #smiles = 'c1cc(CCCO)ccc1'
     #smiles = 'c1ccccc1'
     protein_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/protein_no_water.mol2'
     protein_coords = read_protein_coords(protein_mol2_path)
@@ -711,7 +715,7 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 1, 9, [linkers[0]], [fragments[20], fragments[26]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20], fragments[26]], aromatic_atom_idx, protein_coords)
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
     write_poses_to_file(tree)

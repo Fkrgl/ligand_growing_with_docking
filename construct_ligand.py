@@ -296,13 +296,14 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                         # generate each decoration and save them as a mol
 
                         # align mol to base fragment
-                        mol_linker_fragment_aligned = decorate_ligand.align_to_basefragment(mol_linker_fragment,
-                                                                                            base_fragment,
-                                                                                            aromatic_idx_base)
+                        show_indexed_mol(mol_linker_fragment)
+                        show_indexed_mol(base_fragment)
+                        mol_linker_fragment_aligned = align_to_basefragment(mol_linker_fragment, base_fragment,
+                                                                            aromatic_idx_base)
                         # generate all decorations
-                        mol_linker_fragment_decorated = decorate_ligand.decorate_ligand(mol_linker_fragment_aligned,
-                                                                                        aromatic_idx_base, protein_coords,
-                                                                                        bond_length, atoms_to_functionals)
+                        mol_linker_fragment_decorated = decorate_ligand(mol_linker_fragment_aligned, aromatic_idx_base,
+                                                                        protein_coords, bond_length,
+                                                                        atoms_to_functionals)
                         # add undecorated mol to list
                         mol_linker_fragment_decorated.append(mol_linker_fragment)
                         # check if each decorated mol is valid
@@ -531,10 +532,13 @@ def align_to_basefragment(mol, base_fragment, aromatic_ring_idx):
     :return:
     '''
     # remove hydrogens
-    mol = rdkit.Chem.rdmolops.RemoveHs(mol)
-    base_fragment = rdkit.Chem.rdmolops.RemoveHs(base_fragment)
+    mol = rdkit.Chem.RemoveHs(mol)
+    base_fragment = rdkit.Chem.RemoveHs(base_fragment)
     mol_aligned = Chem.Mol(mol)
     # get Affine Transformation Matrix M
+    #print(f'Mol = {mol.GetConformer()}')
+    print(f'base fragment= {base_fragment.plants_pose.GetConformer()}')
+    print(f'aromatic ring index: {aromatic_ring_idx}')
     alignment = rdkit.Chem.rdMolAlign.GetAlignmentTransform(mol, base_fragment,
                                                             atomMap=list(zip(aromatic_ring_idx, aromatic_ring_idx)))
     M = alignment[1]

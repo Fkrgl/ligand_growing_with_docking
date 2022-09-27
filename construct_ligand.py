@@ -1,7 +1,7 @@
 from rdkit import Chem
 from rdkit.Chem import AllChem
 import rdkit.Chem.Draw
-import random, os
+import random, os, sys
 import numpy as np
 import pandas as pd
 from anytree import AnyNode
@@ -376,8 +376,8 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
     k = 0
     base_fragment_node = mol_tree.get_root()
     # choose best pose for base fragment
-    initial_pose = choose_best_initial_pose(base_fragment_node)
-    base_fragment = initial_pose.mol
+    choose_best_initial_pose(base_fragment_node)
+    base_fragment = base_fragment_node.plants_pose
     for i in range(n_grow_iter):
         print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
         grown_mols = []
@@ -421,19 +421,30 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
     print('stuff happens')
 
 
-def choose_best_initial_pose(base_fragment_node):
+def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     '''
     docks the crystal structure and finds under the initial docking poses the pose with the lowest RMSD
     '''
     crystal_structure = base_fragment_node.mol
-    initial_poses, scores = run_plants.dock_molecule(crystal_structure)
-    rmsd = [calc_RMSD(crystal_structure, initial_pose) for initial_pose in initial_poses]
-    idx = np.argmin(rmsd)
-    print(f'the best initial pose has an RMSD of {rmsd[idx]} with score {scores[idx]}')
-    # set pose and score for root node
-    base_fragment_node.mol = initial_poses[idx]
-    base_fragment_node.plants_pose = initial_poses[idx]
-    base_fragment_node.score = scores[idx]
+    initial_poses = None
+    scores = None
+    # three attempts to reach RMSD threshold
+    for i in range(3):
+        initial_poses, scores = run_plants.dock_molecule(crystal_structure)
+        if min(scores) <= cutoff:
+            print(initial_poses)
+            print(scores)
+            rmsd = [calc_RMSD(crystal_structure, initial_pose) for initial_pose in initial_poses]
+            print(rmsd)
+            idx = np.argmin(rmsd)
+            print(f'the best initial pose has an RMSD of {rmsd[idx]} with score {scores[idx]}')
+            # set pose and score for root node
+            base_fragment_node.mol = initial_poses[idx]
+            base_fragment_node.plants_pose = initial_poses[idx]
+            base_fragment_node.score = scores[idx]
+            return
+    # abort if threshold is not reached
+    sys.exit(f'Crystal structure and docking pose of crystal structure deviate to much (RMSD > {cutoff})')
 
 
 def dock_leafs(leaf_nodes):
@@ -740,7 +751,7 @@ def main():
     #smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
     #smiles = 'c1ccccc1'
-    ligand_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand.mol2'
+    ligand_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand_original.mol2'
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
     show_indexed_mol(mol)
     protein_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/protein_no_water.mol2'

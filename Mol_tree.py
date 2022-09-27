@@ -1,3 +1,4 @@
+import bisect
 """
 This class implemets a tree data structure that
 1) saves all molecules as nodes
@@ -9,6 +10,7 @@ class Mol_Tree:
         self.root = root
         self.nodes = []
         self.leafs = []
+        self.best_poses = []
         self.nodes.append(root)
         self.leafs.append(root)
 
@@ -16,6 +18,15 @@ class Mol_Tree:
         if type(node) != list:
             node = [node]
         self.nodes += node
+        # insert nodes in best_poses
+        for n in node:
+            if len(self.best_poses) < 100:
+                bisect.insort(self.best_poses, (n.score, n))
+            else:
+                # only sort in if score is better than score of last element
+                if n.score < self.best_poses[-1][0]:
+                    bisect.insort(self.best_poses, (n.score, n))
+                    del self.best_poses[-1]
 
     def insert_leafs(self, leafs):
         if type(leafs) != list:
@@ -33,3 +44,8 @@ class Mol_Tree:
 
     def get_leafs(self):
         return self.leafs
+
+    def get_best_poses(self):
+        return self.best_poses
+
+

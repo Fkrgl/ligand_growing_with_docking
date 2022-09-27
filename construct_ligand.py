@@ -317,8 +317,8 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                         for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
                             if mol_linker_fragment_decorated:
                                 grown_mols.append(mol_linker_fragment_aligned)
-                                # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]
-                                node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}'
+                                # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]_[pose]
+                                node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}_0'
                                 new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
                                                    score=None)
                                 nodes.append(new_node)
@@ -375,11 +375,9 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
     # begin grow with base_fragment
     k = 0
     base_fragment_node = mol_tree.get_root()
-    base_fragment = base_fragment_node.mol
-    # get pose for base fragment
-    dock_leafs([base_fragment_node])
-    base_fragment_score = base_fragment_node.score
-    print(f'The base fragment score is {base_fragment_score}')
+    # choose best pose for base fragment
+    initial_pose = choose_best_initial_pose(base_fragment_node)
+    base_fragment = initial_pose.mol
     for i in range(n_grow_iter):
         print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
         grown_mols = []
@@ -391,7 +389,7 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 possible_grow_seeds = [initial_grow_seed]
             else:
                 possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment)
-            # grow on each possible grow seed on the current leaf
+                # grow on each possible grow seed on the current leaf
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
                 mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k,
@@ -400,9 +398,14 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 grown_mols += mols
                 current_leafs += nodes
                 k += 1
-        # dock all grown molecules from this iteration (use nodes!)
+        # dock all grown molecules from this iteration and add additional poses as nodes
         print(len(current_leafs))
-        dock_leafs(current_leafs)
+        additional_nodes = dock_leafs(current_leafs)
+        print('does stuff happen?')
+        if len(additional_nodes) > 0:
+            current_leafs += additional_nodes
+        print(f'additional nodes = {additional_nodes}')
+        print(f'current leafs = {current_leafs}')
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
         print(f'Filtered leafs: {filtered_leafs}')
@@ -415,17 +418,60 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         mol_tree.insert_node(current_leafs)
         # consider only filtered leafs as candidates to continue with
         mol_tree.insert_leafs(filtered_leafs)
+    print('stuff happens')
+
+
+def choose_best_initial_pose(base_fragment_node):
+    '''
+    docks the crystal structure and finds under the initial docking poses the pose with the lowest RMSD
+    '''
+    crystal_structure = base_fragment_node.mol
+    initial_poses, scores = run_plants.dock_molecule(crystal_structure)
+    rmsd = [calc_RMSD(crystal_structure, initial_pose) for initial_pose in initial_poses]
+    idx = np.argmin(rmsd)
+    print(f'the best initial pose has an RMSD of {rmsd[idx]} with score {scores[idx]}')
+    # set pose and score for root node
+    base_fragment_node.mol = initial_poses[idx]
+    base_fragment_node.plants_pose = initial_poses[idx]
+    base_fragment_node.score = scores[idx]
+
 
 def dock_leafs(leaf_nodes):
     '''
     function performs docking for each molecule
     :param leaf_nodes: nodes that contain current grown molecules
     '''
+    # multiple poses of the same mol are stored as separated nodes
+    additional_nodes = []
     for leaf_node in leaf_nodes:
-        pose, score = run_plants.dock_molecule(leaf_node.mol)
-        print(pose.GetConformer().GetPositions())
-        leaf_node.plants_pose = pose
-        leaf_node.score = score
+        poses, scores = run_plants.dock_molecule(leaf_node.mol)
+        print(f'poses={poses}, scores={scores}')
+        # one docking pose with high score
+        if len(poses) == 1:
+            leaf_node.plants_pose = poses[0]
+            leaf_node.score = scores[0]
+        # multiple high scoring poses
+        else:
+            # delete parent node and insert all poses as nodes
+            parent = leaf_node.parent
+            identifier = leaf_node.id
+            mol = leaf_node.mol
+            for i in range(len(poses)):
+                if i == 0:
+                    leaf_node.plants_pose = poses[0]
+                    leaf_node.score = scores[0]
+                else:
+                    node_id = identifier.split('_')
+                    print(f'node id={node_id}')
+                    node_id[-1] = str(i)
+                    print(f'node id={node_id}')
+                    node_id = '_'.join(node_id)
+                    pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
+                                                       score=scores[i])
+                    additional_nodes.append(pose_node)
+    print(f'additional nodes = {additional_nodes}')
+    return additional_nodes
+
 
 def write_poses_to_file(mol_tree):
     '''

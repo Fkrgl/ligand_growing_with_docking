@@ -24,14 +24,21 @@ def run_plants():
     process = subprocess.run(args)
 
 
-def get_best_scoring_pose(ranking_file):
-    '''Function retrieves scores of the best model'''
+def get_best_scoring_poses(ranking_file, cutoff=0.95):
+    '''
+    Function retrieves pose of best model and all models with a 95% of the best models score
+    '''
 
+    PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
     ranking = pd.read_csv(ranking_file)
-    pose_file = ranking.iloc[0]['LIGAND_ENTRY'] + '.mol2'
-    print(pose_file)
-    score_norm_heavatoms = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
-    return pose_file, score_norm_heavatoms
+    print(ranking.head())
+    best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
+    filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
+                                                                                  'LIGAND_ENTRY']]
+    scores = filtered_poses['SCORE_NORM_HEVATOMS'].values
+    pose_files = filtered_poses['LIGAND_ENTRY'].values
+    poses = [get_mol_from_mol2file(PLANTS + file + '.mol2') for file in pose_files]
+    return poses, scores
 
 def clear_output_dir():
     '''removes output dir with all subfiles'''
@@ -83,7 +90,6 @@ def dock_molecule(mol):
 
     mol.UpdatePropertyCache()
     mol = Chem.AddHs(mol)
-    #print([n.GetSymbol() for n in list(mol.GetAtoms())[atom_idx].GetNeighbors()])
     AllChem.EmbedMolecule(mol)
     AllChem.MMFFOptimizeMolecule(mol)
     # write sdf and convert in mol2
@@ -91,10 +97,9 @@ def dock_molecule(mol):
     convert_mol_files(PLANTS + 'ligand.sdf', 'sdf', 'mol2')
     # run plants on modified ligand
     run_plants()
-    pose_file, score = get_best_scoring_pose(RANKING_FILE)
-    # get best pose as rdkit molecule
-    mol = get_mol_from_mol2file(PLANTS + f'output/{pose_file}')
-    return mol, score
+    # get best pose as rdkit molecule with scores
+    poses, score = get_best_scoring_poses(RANKING_FILE)
+    return poses, score
 
 
 def main():

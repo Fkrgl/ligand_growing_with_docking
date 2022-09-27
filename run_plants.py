@@ -31,7 +31,6 @@ def get_best_scoring_poses(ranking_file, cutoff=0.95):
 
     PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
     ranking = pd.read_csv(ranking_file)
-    print(ranking.head())
     best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
     filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
                                                                                   'LIGAND_ENTRY']]
@@ -55,8 +54,6 @@ def convert_mol_files(path, in_format, out_format):
     '''converts the mol file format into another'''
 
     out_path = path.replace(in_format, out_format)
-    print(f'in_path: {path}')
-    print(f'out path: {out_path}')
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats(in_format, out_format)
     mol = openbabel.OBMol()

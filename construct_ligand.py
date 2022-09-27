@@ -488,6 +488,7 @@ def write_poses_to_file(mol_tree):
     '''
     writes the docking poses of all grown molecules in the molecular tree into a file
     '''
+
     path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
     # check if dir is empty
     if len(os.listdir(path)) > 0:
@@ -499,6 +500,27 @@ def write_poses_to_file(mol_tree):
         pose = leaf.plants_pose
         filename = str(leaf.id) + '.sdf'
         run_plants.write_mol_to_sdf(pose, path + filename)
+
+def write_best_poses_to_file(mol_tree):
+    '''
+    writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
+    '''
+
+    path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
+    ranking_file = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/ranking.txt'
+    # check if dir is empty
+    if len(os.listdir(path)) > 0:
+        for f in os.listdir(path):
+            os.remove(os.path.join(path, f))
+    # save poses to sdf
+    best_poses = mol_tree.get_best_poses() + [(0, mol_tree.get_root())]
+    with open(ranking_file, 'w') as f:
+        for i, p in enumerate(best_poses):
+            node = p[1]
+            pose = node.plants_pose
+            filename = str(node.id) + '.sdf'
+            run_plants.write_mol_to_sdf(pose, path + filename)
+            f.write(f'{i}\t{node.id}\n')
 
 def get_base_fragment_indices(mol, base_fragment):
     '''
@@ -764,10 +786,10 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
-    grow_molecule(tree, 0, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     print(len(tree.get_leafs()))
     print(len(tree.get_nodes()))
-    write_poses_to_file(tree)
+    write_best_poses_to_file(tree)
     print(f'score base fragment: {root.score}')
     for nodes in tree.get_leafs():
         print(nodes.score)

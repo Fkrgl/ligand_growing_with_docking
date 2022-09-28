@@ -409,6 +409,8 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         with Pool(workers) as p:
             additional_nodes = p.map(dock_leafs_parallel, current_leafs)
         p.join()
+        print(f'length all additional nodes={len(additional_nodes)}')
+        print(additional_nodes)
         # flatten nested list and remove all empty return values
         additional_nodes = [x[0] for x in additional_nodes if x != []]
         current_leafs = additional_nodes
@@ -451,6 +453,7 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
 def dock_leafs_parallel(leaf_node):
     additional_nodes = []
     poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
+    print(f'number of poses = {len(poses)}')
     # delete parent node and insert all poses as nodes
     parent = leaf_node.parent
     identifier = leaf_node.id
@@ -462,6 +465,7 @@ def dock_leafs_parallel(leaf_node):
         pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
                             score=scores[i])
         additional_nodes.append(pose_node)
+    print(f'number of additional nodes = {len(additional_nodes)}')
     return additional_nodes
 
 
@@ -520,8 +524,8 @@ def write_best_poses_to_file(mol_tree):
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
     print('Write best poses')
-    path = OUT_DIR + 'grown_molecules/'
-    ranking_file = OUT_DIR + 'ranking.txt'
+    path = OUT_DIR + 'grown_molecules_2/'
+    ranking_file = OUT_DIR + 'ranking_2.txt'
     # check if dir is empty
     if len(os.listdir(path)) > 0:
         for f in os.listdir(path):

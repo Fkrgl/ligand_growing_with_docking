@@ -779,6 +779,7 @@ def main():
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of current leafs: {len(tree.get_nodes())}')
+    print(f'number of current leafs: \n {tree.best_poses}')
 
 if __name__ == '__main__':
     main()

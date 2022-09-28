@@ -21,6 +21,8 @@ class Mol_Tree:
         # insert nodes in best_poses
         for n in node:
             if len(self.best_poses) < 100:
+                print(self.best_poses)
+                print((n.score, n))
                 bisect.insort(self.best_poses, (n.score, n))
             else:
                 # only sort in if score is better than score of last element

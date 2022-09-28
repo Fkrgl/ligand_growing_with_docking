@@ -8,6 +8,12 @@ from anytree import AnyNode
 from Mol_tree import Mol_Tree
 import run_plants
 from scipy.spatial.distance import cdist
+import argparse
+from tqdm import tqdm
+
+
+PLANTS = ''
+OUT_DIR = ''
 
 def label_base_fragment(mol):
     '''
@@ -179,7 +185,6 @@ def get_linker_atom_and_neighbor(mol, linker_atom_smiles):
     :return: linker atom and its neighbor
     '''
     linger_idx = mol.GetSubstructMatch(Chem.MolFromSmiles(linker_atom_smiles))[0]
-    print(f'match for {linker_atom_smiles}: {linger_idx}')
     linker_atom = mol.GetAtomWithIdx(linger_idx)
     linker_atom_neighbor = linker_atom.GetNeighbors()[0]
     return linker_atom, linker_atom_neighbor
@@ -238,8 +243,6 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
     # make combo editable
     edcombo = Chem.EditableMol(combo)
     # add bond between linker and neighbor of au atom
-    print(atom_idx, linker_atom_neighbor.GetIdx())
-    print(f'atom index={atom_idx}')
     edcombo.AddBond(atom_idx, linker_atom_neighbor.GetIdx(), order=bond_type)
 
     # remove AU and its bond to the linker
@@ -310,7 +313,6 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                                                                         atoms_to_functionals)
                         # for deco in mol_linker_fragment_decorated:
                         #     show_indexed_mol(deco)
-                        print(f'Decoration_length = {len(mol_linker_fragment_decorated)}')
                         # add undecorated mol to list
                         mol_linker_fragment_decorated.append(mol_linker_fragment)
                         # check if each decorated mol is valid
@@ -379,7 +381,8 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
     choose_best_initial_pose(base_fragment_node)
     base_fragment = base_fragment_node.plants_pose
     for i in range(n_grow_iter):
-        print(f'in iteration {i} we have {len(mol_tree.get_leafs())} leafs')
+        print(f'ITERATION {i+1}/{n_grow_iter}\n')
+        print('construct all combinations ...')
         grown_mols = []
         current_leafs = []
         # grow each leaf molecule by all combinations
@@ -399,16 +402,12 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 current_leafs += nodes
                 k += 1
         # dock all grown molecules from this iteration and add additional poses as nodes
-        print(len(current_leafs))
+        print(f'Docking of iteration {i+1} is running ...')
         additional_nodes = dock_leafs(current_leafs)
-        print('does stuff happen?')
         if len(additional_nodes) > 0:
             current_leafs += additional_nodes
-        print(f'additional nodes = {additional_nodes}')
-        print(f'current leafs = {current_leafs}')
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
-        print(f'Filtered leafs: {filtered_leafs}')
         if len(filtered_leafs) == 0:
             # later: if no improvement in one round is made, try to continue with another node that has a good score.
             print('\nNo score improvement could be achieved.\n')
@@ -418,7 +417,6 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         mol_tree.insert_node(current_leafs)
         # consider only filtered leafs as candidates to continue with
         mol_tree.insert_leafs(filtered_leafs)
-    print('stuff happens')
 
 
 def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
@@ -430,14 +428,10 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     scores = None
     # three attempts to reach RMSD threshold
     for i in range(3):
-        initial_poses, scores = run_plants.dock_molecule(crystal_structure)
+        initial_poses, scores = run_plants.dock_molecule(crystal_structure, PLANTS)
         if min(scores) <= cutoff:
-            print(initial_poses)
-            print(scores)
             rmsd = [calc_RMSD(crystal_structure, initial_pose) for initial_pose in initial_poses]
-            print(rmsd)
             idx = np.argmin(rmsd)
-            print(f'the best initial pose has an RMSD of {rmsd[idx]} with score {scores[idx]}')
             # set pose and score for root node
             base_fragment_node.mol = initial_poses[idx]
             base_fragment_node.plants_pose = initial_poses[idx]
@@ -454,9 +448,8 @@ def dock_leafs(leaf_nodes):
     '''
     # multiple poses of the same mol are stored as separated nodes
     additional_nodes = []
-    for leaf_node in leaf_nodes:
-        poses, scores = run_plants.dock_molecule(leaf_node.mol)
-        print(f'poses={poses}, scores={scores}')
+    for leaf_node in tqdm(leaf_nodes):
+        poses, scores = run_plants.dock_molecule(leaf_node.mol, PLANTS)
         # one docking pose with high score
         if len(poses) == 1:
             leaf_node.plants_pose = poses[0]
@@ -473,14 +466,11 @@ def dock_leafs(leaf_nodes):
                     leaf_node.score = scores[0]
                 else:
                     node_id = identifier.split('_')
-                    print(f'node id={node_id}')
                     node_id[-1] = str(i)
-                    print(f'node id={node_id}')
                     node_id = '_'.join(node_id)
                     pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
                                                        score=scores[i])
                     additional_nodes.append(pose_node)
-    print(f'additional nodes = {additional_nodes}')
     return additional_nodes
 
 
@@ -489,7 +479,7 @@ def write_poses_to_file(mol_tree):
     writes the docking poses of all grown molecules in the molecular tree into a file
     '''
 
-    path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
+    path = OUT_DIR + 'grown_molecules/'
     # check if dir is empty
     if len(os.listdir(path)) > 0:
         for f in os.listdir(path):
@@ -506,8 +496,8 @@ def write_best_poses_to_file(mol_tree):
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
 
-    path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/'
-    ranking_file = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/ranking.txt'
+    path = OUT_DIR + 'grown_molecules/'
+    ranking_file = OUT_DIR + 'ranking.txt'
     # check if dir is empty
     if len(os.listdir(path)) > 0:
         for f in os.listdir(path):
@@ -552,7 +542,7 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def filter_leafs(leafs, base_fragment_node, cut_off=100):
+def filter_leafs(leafs, base_fragment_node, cut_off=20):
     '''
     function returns only the leafs that have:
     1) RMSD with the base fragment below a certain threshold
@@ -564,23 +554,18 @@ def filter_leafs(leafs, base_fragment_node, cut_off=100):
     base_fragment = base_fragment_node.plants_pose
     base_fragment_score = base_fragment_node.score
     for leaf in leafs:
-        if leaf.score <= base_fragment_score*0.01:
+        if leaf.score <= base_fragment_score*0.001:
             rmsd = calc_RMSD(base_fragment, leaf.plants_pose)
-            print(f"RMSD is {rmsd}")
             if rmsd <= cut_off:
                 filtered_leafs.append(leaf)
-                print(f'RMSD={rmsd}, score={leaf.score}')
     return filtered_leafs
 
 
 def read_protein_coords(protein_mol2_path):
     out_path = run_plants.convert_mol_files(protein_mol2_path, 'mol2', 'sdf')
-    print(out_path)
     protein = Chem.MolFromMolFile(out_path, sanitize=False)
-    print(f'protein: {protein}')
     protein = Chem.RemoveHs(protein, sanitize=False)
     protein_coords = protein.GetConformer().GetPositions()
-    print(protein_coords)
     return protein_coords
 
 
@@ -605,7 +590,6 @@ def get_aromatic_rings(mol):
     rings = mol.GetRingInfo()
     # check all bonds for aromaticity
     for ring in rings.BondRings():
-        print(ring)
         if isRingAromatic(mol, ring):
             # get atom indices of aromatic bonds
             for bond_idx in ring:
@@ -627,7 +611,6 @@ def align_to_basefragment(mol, base_fragment, aromatic_ring_idx):
     base_fragment = rdkit.Chem.RemoveHs(base_fragment)
     mol_aligned = Chem.Mol(mol)
     # get Affine Transformation Matrix M
-    print(f'aromatic ring index: {aromatic_ring_idx}')
     alignment = rdkit.Chem.rdMolAlign.GetAlignmentTransform(mol, base_fragment,
                                                             atomMap=list(zip(aromatic_ring_idx, aromatic_ring_idx)))
     M = alignment[1]
@@ -671,7 +654,6 @@ def has_spacial_neighbors(atom_pos, protein_coords, min_d=2):
     atom_pos = np.asarray(atom_pos).reshape(1, -1)
     distances = cdist(protein_coords, atom_pos, 'euclidean')
     min_dist = min(distances)[0]
-    print(f'min = {min_dist:.1f}')
     if min_dist < min_d:
         return True
     else:
@@ -703,8 +685,6 @@ def add_functional_group(mol, pos, substituent_smiles, linker_atom_symbol, bond_
             mol = Chem.RWMol(mol)
             mol.RemoveBond(linker_atom.GetIdx(), linker_atom_neighbor.GetIdx())
             mol.RemoveAtom(linker_atom.GetIdx())
-            print(f'neighbor={neighbor}')
-            print(f'neighbor idx = {neighbor_idx}')
             # search neighbor again, index is confused somehow (the neighbor from the for loop is no longer the right
             # atom)
             for n in mol.GetAtomWithIdx(pos).GetNeighbors():
@@ -734,7 +714,6 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
     '''
     function adds functional groups to all aromatic ring atoms if they do not clash with any protein atoms
     '''
-    print('decorate ligand!!!!!!!!!')
     mol_with_functionals = []
     mol = Chem.AddHs(mol)
 
@@ -742,17 +721,14 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
     for idx in aromatic_atom_idx:
         # check if atom has hydrogen as neighbor
         neighbors = [neighbor.GetSymbol() for neighbor in mol.GetAtomWithIdx(idx).GetNeighbors()]
-        print(neighbors)
         if 'H' in neighbors:
             for group in group_atoms:
                 group_pos = calc_group_position(mol, idx, bond_length['C' + group])
                 # check if coords of group would clash
                 if has_spacial_neighbors(group_pos, protein_coords):
-                    print('has spacial neighbors!')
                     continue
                 # no clashes: add functional groups to mol
                 else:
-                    print('no clash!')
                     # go through each functional group with this linker atom
                     for functional in atoms_to_functionals[group]:
                         # give max_attempts attempts to add functional group
@@ -767,32 +743,42 @@ def decorate_ligand(mol, aromatic_atom_idx, protein_coords, bond_length, atoms_t
                             attempt += 1
     return mol_with_functionals
 
+def get_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('l', metavar='-ligand', type=str, help='path to mol2 file for ligand')
+    parser.add_argument('p', metavar='-protein', type=str, help='path to mol2 for protein')
+    parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
+    parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
+                                                                '\'grown_molecules\' and ranking.txt are located')
+    args = parser.parse_args()
+    return args.l, args.p, args.P, args.o
 # ===================================================== MAIN  ======================================================== #
 
 def main():
     #smiles = 'C1=CC=C2C(=C1)C=CN2'
     #smiles = 'c1cc(CCCO)ccc1'
     #smiles = 'c1ccccc1'
-    ligand_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand_original.mol2'
+    # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand_original.mol2'
+    # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+    # read in ligand, protein and the PLANTS path
+    global PLANTS, OUT_DIR
+    # enter paths always with a slash at the end!
+    ligand_mol2_path, protein_mol2_path, plants, out_dir = get_arguments()
+    PLANTS = plants
+    OUT_DIR = out_dir
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
     show_indexed_mol(mol)
-    protein_mol2_path = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/protein_no_water.mol2'
     protein_coords = read_protein_coords(protein_mol2_path)
     #mol = Chem.MolFromSmiles(smiles)
-    print(mol)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
-    # grow_ligand_at_random(smiles, 10)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
     grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
-    print(len(tree.get_leafs()))
-    print(len(tree.get_nodes()))
     write_best_poses_to_file(tree)
-    print(f'score base fragment: {root.score}')
-    for nodes in tree.get_leafs():
-        print(nodes.score)
+    print(f'total number of grown mols: {len(tree.get_nodes())}')
+    print(f'number of current leafs: {len(tree.get_nodes())}')
 
 if __name__ == '__main__':
     main()

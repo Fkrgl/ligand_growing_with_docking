@@ -8,38 +8,37 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import construct_ligand
 
-PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
-RANKING_FILE = PLANTS + 'output/ranking.csv'
 
-def run_plants():
+def run_plants(PLANTS):
     '''run plants in a shell as a subprocess'''
 
-    PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+    #PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
     config = PLANTS + 'plantsconfig'
     os.chdir(PLANTS)
     # remove output dir if it already exists
     if os.path.exists(PLANTS + 'output'):
         shutil.rmtree(PLANTS + 'output')
     args = ['./PLANTS', '--mode', 'screen', config]
-    process = subprocess.run(args)
+    process = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
-def get_best_scoring_poses(ranking_file, cutoff=0.95):
+def get_best_scoring_poses(ranking_file, PLANTS, cutoff=0.95):
     '''
     Function retrieves pose of best model and all models with a 95% of the best models score
     '''
 
-    PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
+    #PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
+    plants_output = PLANTS + 'output/'
     ranking = pd.read_csv(ranking_file)
     best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
     filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
                                                                                   'LIGAND_ENTRY']]
     scores = filtered_poses['SCORE_NORM_HEVATOMS'].values
     pose_files = filtered_poses['LIGAND_ENTRY'].values
-    poses = [get_mol_from_mol2file(PLANTS + file + '.mol2') for file in pose_files]
+    poses = [get_mol_from_mol2file(plants_output + file + '.mol2') for file in pose_files]
     return poses, scores
 
-def clear_output_dir():
+def clear_output_dir(PLANTS):
     '''removes output dir with all subfiles'''
 
     if os.path.exists(PLANTS + 'output'):
@@ -67,7 +66,7 @@ def get_mol_from_mol2file(mol2file_path):
     return mol
 
 
-def renew_ligand_file():
+def renew_ligand_file(PLANTS):
     '''function removes all the old files from the previous run and restores the original ligand file'''
 
     if os.path.exists(PLANTS + 'ligand.sdf'):
@@ -76,13 +75,13 @@ def renew_ligand_file():
         os.remove(PLANTS + 'ligand.mol2')
     shutil.copyfile(PLANTS + 'ligand_original.mol2', PLANTS + 'ligand.mol2')
 
-def dock_molecule(mol):
+def dock_molecule(mol, PLANTS):
     '''
     function optimizes the molecule, sets up the ligand.mol2 file required and runs PLANTS.
     :param mol: ligand as mol object
     :return: best pose with score
     '''
-    PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+
     RANKING_FILE = PLANTS + 'output/ranking.csv'
 
     mol.UpdatePropertyCache()
@@ -93,9 +92,9 @@ def dock_molecule(mol):
     write_mol_to_sdf(mol, PLANTS + 'ligand.sdf')
     convert_mol_files(PLANTS + 'ligand.sdf', 'sdf', 'mol2')
     # run plants on modified ligand
-    run_plants()
+    run_plants(PLANTS)
     # get best pose as rdkit molecule with scores
-    poses, score = get_best_scoring_poses(RANKING_FILE)
+    poses, score = get_best_scoring_poses(RANKING_FILE, PLANTS)
     return poses, score
 
 

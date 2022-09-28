@@ -778,8 +778,7 @@ def main():
     grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
-    print(f'number of current leafs: {len(tree.get_nodes())}')
-    print(f'number of current leafs: \n {tree.best_poses}')
+    print(f'number of best poses : {len(tree.get_nodes())}')
 
 if __name__ == '__main__':
     main()

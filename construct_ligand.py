@@ -10,6 +10,8 @@ import run_plants
 from scipy.spatial.distance import cdist
 import argparse
 from tqdm import tqdm
+from multiprocessing import Pool
+from multiprocessing import Queue
 
 
 PLANTS = ''
@@ -363,7 +365,7 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords):
+def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=4):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -403,9 +405,14 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 k += 1
         # dock all grown molecules from this iteration and add additional poses as nodes
         print(f'Docking of iteration {i+1} is running ...')
-        additional_nodes = dock_leafs(current_leafs)
-        if len(additional_nodes) > 0:
-            current_leafs += additional_nodes
+        print(len(current_leafs))
+        with Pool(workers) as p:
+            additional_nodes = p.map(dock_leafs_parallel, current_leafs)
+        p.join()
+        # flatten nested list and remove all empty return values
+        additional_nodes = [x[0] for x in additional_nodes if x != []]
+        current_leafs = additional_nodes
+        print(len(current_leafs))
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
         if len(filtered_leafs) == 0:
@@ -439,6 +446,23 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
             return
     # abort if threshold is not reached
     sys.exit(f'Crystal structure and docking pose of crystal structure deviate to much (RMSD > {cutoff})')
+
+
+def dock_leafs_parallel(leaf_node):
+    additional_nodes = []
+    poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
+    # delete parent node and insert all poses as nodes
+    parent = leaf_node.parent
+    identifier = leaf_node.id
+    mol = leaf_node.mol
+    for i in range(len(poses)):
+        node_id = identifier.split('_')
+        node_id[-1] = str(i)
+        node_id = '_'.join(node_id)
+        pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
+                            score=scores[i])
+        additional_nodes.append(pose_node)
+    return additional_nodes
 
 
 def dock_leafs(leaf_nodes):
@@ -495,7 +519,7 @@ def write_best_poses_to_file(mol_tree):
     '''
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
-
+    print('Write best poses')
     path = OUT_DIR + 'grown_molecules/'
     ranking_file = OUT_DIR + 'ranking.txt'
     # check if dir is empty
@@ -571,7 +595,7 @@ def read_protein_coords(protein_mol2_path):
 
 # ============================================= decorate aromatic rings  ============================================= #
 
-def isRingAromatic(mol,bondRing):
+def isRingAromatic(mol, bondRing):
     '''
     checks each bond of a ring for aromaticity
     :param mol: molecule that contains the ring

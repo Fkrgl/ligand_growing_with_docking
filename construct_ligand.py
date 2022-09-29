@@ -415,6 +415,7 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         pool.close()
         pool.join()
         docked_nodes = []
+        # get results from processes of pool
         for r in result:
             nodes = r.get()
             docked_nodes += nodes

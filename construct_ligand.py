@@ -10,6 +10,7 @@ import run_plants
 from scipy.spatial.distance import cdist
 import argparse
 from tqdm import tqdm
+from time import time
 
 
 PLANTS = ''
@@ -775,10 +776,12 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
+    start_time = time()
     grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')
+    print(f'Runtime: {time()-start_time}')
 
 if __name__ == '__main__':
     main()

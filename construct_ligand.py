@@ -406,7 +406,7 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         # dock all grown molecules from this iteration and add additional poses as nodes
         print(f'Docking of iteration {i+1} is running ...')
 
-        # paralellized docking
+        # parallelized docking
         pool = Pool(processes=workers)
         result = []
         pbar = tqdm(total=len(current_leafs))

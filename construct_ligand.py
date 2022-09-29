@@ -506,7 +506,7 @@ def write_best_poses_to_file(mol_tree):
         for f in os.listdir(path):
             os.remove(os.path.join(path, f))
     # save poses to sdf
-    best_poses = mol_tree.get_best_poses() + [(0, mol_tree.get_root())]
+    best_poses = mol_tree.get_best_poses(n_best=100)
     with open(ranking_file, 'w') as f:
         for i, p in enumerate(best_poses):
             node = p[1]
@@ -779,7 +779,7 @@ def main():
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
     start_time = time()
-    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20], fragments[21]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')

@@ -10,27 +10,14 @@ class Mol_Tree:
         self.root = root
         self.nodes = []
         self.leafs = []
-        self.best_poses = []
         self.nodes.append(root)
         self.leafs.append(root)
 
     def insert_node(self, node):
         if type(node) != list:
             node = [node]
-        self.nodes += node
-        # insert nodes in best_poses
         for n in node:
-            if len(self.best_poses) < 100:
-                try:
-                    bisect.insort(self.best_poses, (n.score, n))
-                except:
-                    print(f' not inserted: {n.score, n}')
-                    print(f'number of pose={len(self.best_poses)}')
-            else:
-                # only sort in if score is better than score of last element
-                if n.score < self.best_poses[-1][0]:
-                    bisect.insort(self.best_poses, (n.score, n))
-                    del self.best_poses[-1]
+            self.nodes.append((n.score, n))
 
     def insert_leafs(self, leafs):
         if type(leafs) != list:
@@ -49,7 +36,8 @@ class Mol_Tree:
     def get_leafs(self):
         return self.leafs
 
-    def get_best_poses(self):
-        return self.best_poses
+    def get_best_poses(self, n_best):
+        best_poses = sorted(self.nodes, key=lambda tup: tup[0])
+        return best_poses[:n_best]
 
 

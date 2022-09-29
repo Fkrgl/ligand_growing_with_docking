@@ -6,6 +6,7 @@ import re
 import pandas as pd
 from anytree import AnyNode
 from multiprocessing import Pool
+import multiprocessing
 
 
 def write_plantsconfig(id, lig_file):
@@ -27,9 +28,4 @@ def write_plantsconfig(id, lig_file):
     #os.remove(PLANTS + f"plantsconfig_{id}")
 
 
-def double_it(x):
-    return x*x
-
-with Pool(4) as p:
-    additional_nodes = p.map(double_it, [1,2,3,4,5,6,7,8,9])
-print(additional_nodes)
+print(multiprocessing.cpu_count())

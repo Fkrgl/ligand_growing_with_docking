@@ -365,7 +365,7 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=4):
+def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=6):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -779,7 +779,7 @@ def main():
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
     start_time = time()
-    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 1, 2, [linkers[0], linkers[1]], [fragments[20], fragments[21]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')

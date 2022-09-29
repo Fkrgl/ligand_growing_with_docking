@@ -22,9 +22,10 @@ def run_plants(PLANTS):
     process = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 def run_plants_parallel(PLANTS, config):
-    '''run plants in a shell as a subprocess'''
-
-    #PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
+    '''
+    run plants in a shell as a subprocess. function is designed to work in parallel
+    '''
+    os.chdir(PLANTS)
     args = ['./PLANTS', '--mode', 'screen', config]
     process = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
@@ -33,7 +34,6 @@ def get_best_scoring_poses(ranking_file, PLANTS, cutoff=0.95):
     Function retrieves pose of best model and all models with a 95% of the best models score
     '''
 
-    #PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
     ranking = pd.read_csv(ranking_file)
     best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
     filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
@@ -44,12 +44,11 @@ def get_best_scoring_poses(ranking_file, PLANTS, cutoff=0.95):
     poses = [get_mol_from_mol2file(plants_output + file + '.mol2') for file in pose_files]
     return poses, scores
 
-def get_best_scoring_poses_parallel(ranking_file, plants_output, PLANTS, cutoff=0.95):
+def get_best_scoring_poses_parallel(ranking_file, plants_output, cutoff=0.95):
     '''
     Function retrieves pose of best model and all models with a 95% of the best models score
     '''
 
-    #PLANTS = '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/output/'
     ranking = pd.read_csv(ranking_file)
     best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
     filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
@@ -145,7 +144,8 @@ def dock_molecule_parallel(node, PLANTS):
     os.remove(ligand_sdf.replace('sdf','mol2'))
     os.remove(PLANTS + f"plantsconfig_{id}")
     # get best pose as rdkit molecule with scores
-    poses, score = get_best_scoring_poses_parallel(ranking_file, output_dir, PLANTS)
+    poses, score = get_best_scoring_poses_parallel(ranking_file, output_dir)
+    shutil.rmtree(output_dir)
     return poses, score
 
 def write_plantsconfig(id, ligand_mol2, PLANTS):

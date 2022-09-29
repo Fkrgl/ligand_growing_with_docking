@@ -409,16 +409,15 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         # paralellized docking
         pool = Pool(processes=workers)
         result = []
+        pbar = tqdm(total=len(current_leafs))
         for leaf in current_leafs:
-            result.append(pool.apply_async(func=dock_leafs_parallel, args=(leaf,)))
+            result.append(pool.apply_async(func=dock_leafs_parallel, args=(leaf,), callback=lambda _: pbar.update(1)))
         pool.close()
         pool.join()
         docked_nodes = []
         for r in result:
             nodes = r.get()
             docked_nodes += nodes
-
-        print(f'length all additional nodes={len(docked_nodes)}')
 
         current_leafs = docked_nodes
         # insert nodes in tree that have equal or better score than base fragment
@@ -457,6 +456,10 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
 
 
 def dock_leafs_parallel(leaf_node):
+    '''
+    function performs docking for one leaf node. It is designed to work in parallel
+    :param leaf_nodes: node that contains one of the current grown molecules
+    '''
     docked_nodes = []
     poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
     # delete parent node and insert all poses as nodes
@@ -471,39 +474,6 @@ def dock_leafs_parallel(leaf_node):
                             score=scores[i])
         docked_nodes.append(pose_node)
     return docked_nodes
-
-
-def dock_leafs(leaf_nodes):
-    '''
-    function performs docking for each molecule
-    :param leaf_nodes: nodes that contain current grown molecules
-    '''
-    # multiple poses of the same mol are stored as separated nodes
-    additional_nodes = []
-    for leaf_node in tqdm(leaf_nodes):
-        poses, scores = run_plants.dock_molecule(leaf_node.mol, PLANTS)
-        # one docking pose with high score
-        if len(poses) == 1:
-            leaf_node.plants_pose = poses[0]
-            leaf_node.score = scores[0]
-        # multiple high scoring poses
-        else:
-            # delete parent node and insert all poses as nodes
-            parent = leaf_node.parent
-            identifier = leaf_node.id
-            mol = leaf_node.mol
-            for i in range(len(poses)):
-                if i == 0:
-                    leaf_node.plants_pose = poses[0]
-                    leaf_node.score = scores[0]
-                else:
-                    node_id = identifier.split('_')
-                    node_id[-1] = str(i)
-                    node_id = '_'.join(node_id)
-                    pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
-                                                       score=scores[i])
-                    additional_nodes.append(pose_node)
-    return additional_nodes
 
 
 def write_poses_to_file(mol_tree):
@@ -528,8 +498,8 @@ def write_best_poses_to_file(mol_tree):
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
     print('Write best poses')
-    path = OUT_DIR + 'grown_molecules_2/'
-    ranking_file = OUT_DIR + 'ranking_2.txt'
+    path = OUT_DIR + 'grown_molecules/'
+    ranking_file = OUT_DIR + 'ranking.txt'
     # check if dir is empty
     if len(os.listdir(path)) > 0:
         for f in os.listdir(path):
@@ -542,7 +512,7 @@ def write_best_poses_to_file(mol_tree):
             pose = node.plants_pose
             filename = str(node.id) + '.sdf'
             run_plants.write_mol_to_sdf(pose, path + filename)
-            f.write(f'{i}\t{node.id}\n')
+            f.write(f'{i}\t{node.id}\t{node.score:.4f}\n')
 
 def get_base_fragment_indices(mol, base_fragment):
     '''
@@ -812,7 +782,7 @@ def main():
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')
-    print(f'Runtime: {time()-start_time}')
+    print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':
     main()

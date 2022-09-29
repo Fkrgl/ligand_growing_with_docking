@@ -5,6 +5,7 @@ from openbabel import openbabel
 import re
 import pandas as pd
 from anytree import AnyNode
+from multiprocessing import Pool
 
 
 def write_plantsconfig(id, lig_file):
@@ -26,9 +27,9 @@ def write_plantsconfig(id, lig_file):
     #os.remove(PLANTS + f"plantsconfig_{id}")
 
 
+def double_it(x):
+    return x*x
 
-
-
-
-
-write_plantsconfig(4, 'ligand_x.mol2')
+with Pool(4) as p:
+    additional_nodes = p.map(double_it, [1,2,3,4,5,6,7,8,9])
+print(additional_nodes)

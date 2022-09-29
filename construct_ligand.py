@@ -11,7 +11,7 @@ from scipy.spatial.distance import cdist
 import argparse
 from tqdm import tqdm
 from multiprocessing import Pool
-from multiprocessing import Queue
+from time import time
 
 
 PLANTS = ''
@@ -405,15 +405,23 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 k += 1
         # dock all grown molecules from this iteration and add additional poses as nodes
         print(f'Docking of iteration {i+1} is running ...')
-        print(len(current_leafs))
-        with Pool(workers) as p:
-            additional_nodes = p.map(dock_leafs_parallel, current_leafs)
-        p.join()
-        print(f'length all additional nodes={len(additional_nodes)}')
-        print(additional_nodes)
-        # flatten nested list and remove all empty return values
-        additional_nodes = [x[0] for x in additional_nodes if x != []]
-        current_leafs = additional_nodes
+
+        # paralellized docking
+        pool = Pool(processes=workers)
+        result = []
+        for leaf in current_leafs:
+            result.append(pool.apply_async(func=dock_leafs_parallel, args=(leaf,)))
+        pool.close()
+        pool.join()
+        docked_nodes = []
+        for r in result:
+            nodes = r.get()
+            docked_nodes += nodes
+
+        print(f'length all additional nodes={len(docked_nodes)}')
+        print(docked_nodes)
+
+        current_leafs = docked_nodes
         print(len(current_leafs))
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
@@ -451,7 +459,7 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
 
 
 def dock_leafs_parallel(leaf_node):
-    additional_nodes = []
+    docked_nodes = []
     poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
     print(f'number of poses = {len(poses)}')
     # delete parent node and insert all poses as nodes
@@ -462,11 +470,12 @@ def dock_leafs_parallel(leaf_node):
         node_id = identifier.split('_')
         node_id[-1] = str(i)
         node_id = '_'.join(node_id)
+        print(node_id)
         pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
                             score=scores[i])
-        additional_nodes.append(pose_node)
-    print(f'number of additional nodes = {len(additional_nodes)}')
-    return additional_nodes
+        docked_nodes.append(pose_node)
+    print(f'number of additional nodes = {len(docked_nodes)}')
+    return docked_nodes
 
 
 def dock_leafs(leaf_nodes):
@@ -803,10 +812,12 @@ def main():
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
+    start_time = time()
     grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')
+    print(f'Runtime: {time()-start_time}')
 
 if __name__ == '__main__':
     main()

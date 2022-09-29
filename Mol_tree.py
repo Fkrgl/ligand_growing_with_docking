@@ -18,6 +18,7 @@ class Mol_Tree:
             node = [node]
         for n in node:
             self.nodes.append((n.score, n))
+        print(f'list has now length {len(self.nodes)}')
 
     def insert_leafs(self, leafs):
         if type(leafs) != list:

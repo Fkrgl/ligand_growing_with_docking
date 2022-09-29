@@ -497,7 +497,7 @@ def write_best_poses_to_file(mol_tree):
     '''
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
-    print('Write best poses')
+    print('write best poses ...\n')
     path = OUT_DIR + 'grown_molecules/'
     ranking_file = OUT_DIR + 'ranking.txt'
     # check if dir is empty

@@ -419,10 +419,8 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
             docked_nodes += nodes
 
         print(f'length all additional nodes={len(docked_nodes)}')
-        print(docked_nodes)
 
         current_leafs = docked_nodes
-        print(len(current_leafs))
         # insert nodes in tree that have equal or better score than base fragment
         filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
         if len(filtered_leafs) == 0:
@@ -461,7 +459,6 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
 def dock_leafs_parallel(leaf_node):
     docked_nodes = []
     poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
-    print(f'number of poses = {len(poses)}')
     # delete parent node and insert all poses as nodes
     parent = leaf_node.parent
     identifier = leaf_node.id
@@ -470,11 +467,9 @@ def dock_leafs_parallel(leaf_node):
         node_id = identifier.split('_')
         node_id[-1] = str(i)
         node_id = '_'.join(node_id)
-        print(node_id)
         pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
                             score=scores[i])
         docked_nodes.append(pose_node)
-    print(f'number of additional nodes = {len(docked_nodes)}')
     return docked_nodes
 
 

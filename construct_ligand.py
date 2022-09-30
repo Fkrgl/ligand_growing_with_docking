@@ -365,7 +365,7 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=6):
+def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=4):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -407,18 +407,12 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
         print(f'Docking of iteration {i+1} is running ...')
 
         # parallelized docking
-        pool = Pool(processes=workers)
-        result = []
-        pbar = tqdm(total=len(current_leafs))
-        for leaf in current_leafs:
-            result.append(pool.apply_async(func=dock_leafs_parallel, args=(leaf,), callback=lambda _: pbar.update(1)))
-        pool.close()
-        pool.join()
         docked_nodes = []
-        # get results from processes of pool
-        for r in result:
-            nodes = r.get()
-            docked_nodes += nodes
+
+        with Pool(processes=workers) as pool:
+            for leaf in tqdm(pool.imap_unordered(func=dock_leafs_parallel, iterable=current_leafs, chunksize=1), total=len(current_leafs)):
+                docked_nodes += leaf
+        print(f'docked leafs: {docked_nodes}\n\n with length {len(docked_nodes)}')
 
         current_leafs = docked_nodes
         # insert nodes in tree that have equal or better score than base fragment
@@ -779,7 +773,7 @@ def main():
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     tree = Mol_Tree(root)
     start_time = time()
-    grow_molecule(tree, 1, 2, [linkers[0], linkers[1]], [fragments[20], fragments[21]], aromatic_atom_idx, protein_coords)
+    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     write_best_poses_to_file(tree)
     print(f'total number of grown mols: {len(tree.get_nodes())}')
     print(f'number of best poses : {len(tree.get_nodes())}')

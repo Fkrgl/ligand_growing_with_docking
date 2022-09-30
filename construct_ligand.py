@@ -426,7 +426,7 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             return
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
         # write best poses of this round in dir
-        write_best_poses_to_file(high_scoring_nodes, i)
+        write_best_poses_to_file(high_scoring_nodes, i+1)
 
     return high_scoring_nodes
 
@@ -459,16 +459,20 @@ def reset_all_folders():
     all_combinations = PLANTS + 'all_combinations'
     current_nodes = PLANTS + 'current_nodes'
     parallel_output = PLANTS + 'parallel_output'
+    tmp = PLANTS + 'tmp'
 
     if os.path.exists(all_combinations):
         shutil.rmtree(all_combinations)
-        os.mkdir(all_combinations)
+    os.mkdir(all_combinations)
     if os.path.exists(current_nodes):
         shutil.rmtree(current_nodes)
-        os.mkdir(current_nodes)
+    os.mkdir(current_nodes)
     if os.path.exists(parallel_output):
         shutil.rmtree(parallel_output)
-        os.mkdir(parallel_output)
+    os.mkdir(parallel_output)
+    if os.path.exists(tmp):
+        shutil.rmtree(tmp)
+    os.mkdir(tmp)
     # remove all result folders
     for dir in glob.glob(PLANTS + 'best_poses_iter_*'):
         shutil.rmtree(dir)
@@ -813,7 +817,7 @@ def main():
     reset_all_folders()
     iter = 1
     high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
-    write_best_poses_to_file(high_scoring_nodes, iter)
+    #write_best_poses_to_file(high_scoring_nodes, iter)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

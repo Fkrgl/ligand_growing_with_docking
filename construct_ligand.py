@@ -388,7 +388,6 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
     base_node_path = PLANTS + 'current_nodes/root.pkl'
     write_node(base_fragment_node, base_node_path)
     # choose best pose for base fragment
-    print(f'base fragment node: {base_fragment_node}')
     choose_best_initial_pose(base_fragment_node)
     base_fragment = base_fragment_node.plants_pose
     for i in range(n_grow_iter):
@@ -426,6 +425,8 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             print('\nNo score improvement could be achieved.\n')
             return
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
+        # write best poses of this round in dir
+        write_best_poses_to_file(high_scoring_nodes, i)
 
     return high_scoring_nodes
 
@@ -457,12 +458,20 @@ def reset_all_folders():
     'function resets each folder to default'
     all_combinations = PLANTS + 'all_combinations'
     current_nodes = PLANTS + 'current_nodes'
+    parallel_output = PLANTS + 'parallel_output'
+
     if os.path.exists(all_combinations):
         shutil.rmtree(all_combinations)
         os.mkdir(all_combinations)
     if os.path.exists(current_nodes):
         shutil.rmtree(current_nodes)
         os.mkdir(current_nodes)
+    if os.path.exists(parallel_output):
+        shutil.rmtree(parallel_output)
+        os.mkdir(parallel_output)
+    # remove all result folders
+    for dir in glob.glob(PLANTS + 'best_poses_iter_*'):
+        shutil.rmtree(dir)
 
 def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     '''
@@ -515,7 +524,7 @@ def dock_leafs_parallel(node_path):
     os.remove(node_path)
     return passed_poses
 
-def write_best_poses_to_file(high_scoring_nodes):
+def write_best_poses_to_file(high_scoring_nodes, iter):
     '''
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
@@ -523,14 +532,14 @@ def write_best_poses_to_file(high_scoring_nodes):
         return
     else:
         print('write best poses ...\n')
-        path = OUT_DIR + 'grown_molecules/'
-        ranking_file = OUT_DIR + 'ranking.txt'
-        # check if dir is empty
-        if len(os.listdir(path)) > 0:
-            for f in os.listdir(path):
-                os.remove(os.path.join(path, f))
+        path = PLANTS + f'best_poses_iter_{iter}/'
+        ranking_file = path + 'ranking.txt'
+        # check if dir exists
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        os.mkdir(path)
         # save poses to sdf
-        best_poses = high_scoring_nodes
+        best_poses = [(BASE_FRAGMENT_NODE.score, BASE_FRAGMENT_NODE)] + high_scoring_nodes
         with open(ranking_file, 'w') as f:
             for i, p in enumerate(best_poses):
                 node = p[1]
@@ -802,8 +811,9 @@ def main():
     BASE_FRAGMENT_NODE = root
     start_time = time()
     reset_all_folders()
-    high_scoring_nodes = grow_molecule(1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
-    write_best_poses_to_file(high_scoring_nodes)
+    iter = 1
+    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    write_best_poses_to_file(high_scoring_nodes, iter)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

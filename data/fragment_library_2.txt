@@ -1,0 +1,30 @@
+C1CC1   [0]
+c1ccoc1 [0, 1, 2, 3]
+c1ccsc1 [1, 2, 3]
+c1cc[nH]c1  [1, 2, 3]
+c1c[nH]cn1
+c1cn[nH]c1
+c1c[nH]nn1
+c1nc[nH]n1
+c1nnn[nH]1
+c1ccccc1    [0]
+c1ccnnc1    [1, 2, 3]
+c1ccncc1    [0, 1, 2, 3]
+c1cncnc1    [0, 1, 2, 3]
+c2ccc1[nH]ccc1c2
+c2ccc1[nH]nnc1c2
+c2cnc1cc[nH]c1c2
+c2ccc1[nH]cnc1c2
+c2ccc1occc1c2
+c2cnc1nn[nH]c1c2
+C
+CC  [0]
+CC(C)C  [0,1]
+C(=O)
+CO
+C(=O)O
+N
+CNC [0, 1]
+NC(=O)
+C(F)(F)(F)(F)
+

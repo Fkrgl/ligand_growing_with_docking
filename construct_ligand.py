@@ -5,17 +5,21 @@ import random, os, sys
 import numpy as np
 import pandas as pd
 from anytree import AnyNode
-from Mol_tree import Mol_Tree
 import run_plants
 from scipy.spatial.distance import cdist
 import argparse
 from tqdm import tqdm
 from multiprocessing import Pool
 from time import time
+import pickle
+import glob
+import bisect
+import shutil
 
 
 PLANTS = ''
 OUT_DIR = ''
+BASE_FRAGMENT_NODE = None
 
 def label_base_fragment(mol):
     '''
@@ -275,7 +279,6 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
     atoms_to_functionals = {'C': ['[Au]C(=O)O', '[Au]C'],
                             'O': ['[Au]O'],
                             'N': ['[Au]N']}
-    grown_mols = []
     nodes = []
     mol = mol_node.mol
     # go through all linkers
@@ -320,16 +323,16 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                         # check if each decorated mol is valid
                         for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
                             if mol_linker_fragment_decorated:
-                                grown_mols.append(mol_linker_fragment_aligned)
                                 # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]_[pose]
                                 node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}_0'
                                 new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
                                                    score=None)
-                                nodes.append(new_node)
+                                write_node(new_node,
+                                           PLANTS + 'all_combinations/' + f'{node_id_parent}_{i}_{j}_{p}_{q}_0.pkl')
         else:
             continue
     mol_node.children = nodes
-    return grown_mols, nodes
+
 
 def get_possible_grow_seeds(mol, base_fragment):
     '''
@@ -365,7 +368,8 @@ def get_next_grow_seed(possible_grow_seeds):
     return possible_grow_seeds[random.randint(0, len(possible_grow_seeds)-1)]
 
 
-def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords, workers=4):
+def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords,
+                  workers=4, keep_top=100):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -375,20 +379,24 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
     :param linkers: list with all linkers
     :param fragments: list with all fragments
     '''
-
+    global BASE_FRAGMENT_NODE
+    high_scoring_nodes = []
     # begin grow with base_fragment
     k = 0
-    base_fragment_node = mol_tree.get_root()
+    base_fragment_node = BASE_FRAGMENT_NODE
+    # write basefragment to file
+    base_node_path = PLANTS + 'current_nodes/root.pkl'
+    write_node(base_fragment_node, base_node_path)
     # choose best pose for base fragment
+    print(f'base fragment node: {base_fragment_node}')
     choose_best_initial_pose(base_fragment_node)
     base_fragment = base_fragment_node.plants_pose
     for i in range(n_grow_iter):
         print(f'ITERATION {i+1}/{n_grow_iter}\n')
         print('construct all combinations ...')
-        grown_mols = []
-        current_leafs = []
         # grow each leaf molecule by all combinations
-        for leaf in mol_tree.get_leafs():
+        for leaf_path in glob.glob(PLANTS + 'current_nodes/*'):
+            leaf = load_node(leaf_path)
             # select grow seed, grow mol on seed by one linker_fragment combo and save results in tree
             if i == 0:
                 possible_grow_seeds = [initial_grow_seed]
@@ -397,36 +405,64 @@ def grow_molecule(mol_tree, n_grow_iter, initial_grow_seed, linkers, fragments, 
                 # grow on each possible grow seed on the current leaf
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
-                mols, nodes = add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k,
-                                                                   aromatic_atom_idx, base_fragment_node,
-                                                                   protein_coords)
-                grown_mols += mols
-                current_leafs += nodes
+                add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k, aromatic_atom_idx,
+                                                     base_fragment_node, protein_coords)
                 k += 1
+            # remove the leaf from the current_leaf folder (it is now the parent of new child leafs)
+            os.remove(leaf_path)
         # dock all grown molecules from this iteration and add additional poses as nodes
         print(f'Docking of iteration {i+1} is running ...')
 
         # parallelized docking
-        docked_nodes = []
-
+        pathname = PLANTS + 'all_combinations/*.pkl'
+        n_passed_filter = 0
         with Pool(processes=workers) as pool:
-            for leaf in tqdm(pool.imap_unordered(func=dock_leafs_parallel, iterable=current_leafs, chunksize=1), total=len(current_leafs)):
-                docked_nodes += leaf
-        print(f'docked leafs: {docked_nodes}\n\n with length {len(docked_nodes)}')
+            for passed_poses in tqdm(pool.imap_unordered(func=dock_leafs_parallel, iterable=glob.glob(pathname), chunksize=1),
+                             total=len(glob.glob(pathname))):
+                n_passed_filter += passed_poses
 
-        current_leafs = docked_nodes
-        # insert nodes in tree that have equal or better score than base fragment
-        filtered_leafs = filter_leafs(current_leafs, base_fragment_node)
-        if len(filtered_leafs) == 0:
+        if n_passed_filter == 0:
             # later: if no improvement in one round is made, try to continue with another node that has a good score.
             print('\nNo score improvement could be achieved.\n')
             return
-        mol_tree.clear_leafs()
-        # insert all leafs in tree
-        mol_tree.insert_node(current_leafs)
-        # consider only filtered leafs as candidates to continue with
-        mol_tree.insert_leafs(filtered_leafs)
+        high_scoring_nodes = update_top_nodes(high_scoring_nodes)
 
+    return high_scoring_nodes
+
+
+def update_top_nodes(high_scoring_nodes, keep_top=100):
+    pathname = PLANTS + 'current_nodes/*'
+    for file_path in glob.glob(pathname):
+        # add filtered nodes for next iteration
+        with open(file_path, 'rb') as f:
+            node = pickle.load(f)
+            if len(high_scoring_nodes) < keep_top:
+                bisect.insort(high_scoring_nodes, (node.score, node))
+            else:
+                # new node has lower score
+                if high_scoring_nodes[-1][0] > node.score:
+                    bisect.insort(high_scoring_nodes, (node.score, node))
+                    del high_scoring_nodes[-1]
+    return high_scoring_nodes
+
+def load_node(node_path):
+    with open(node_path, 'rb') as f:
+        return pickle.load(f)
+
+def write_node(node, node_path):
+    with open(node_path, 'wb') as f:
+        pickle.dump(node, f)
+
+def reset_all_folders():
+    'function resets each folder to default'
+    all_combinations = PLANTS + 'all_combinations'
+    current_nodes = PLANTS + 'current_nodes'
+    if os.path.exists(all_combinations):
+        shutil.rmtree(all_combinations)
+        os.mkdir(all_combinations)
+    if os.path.exists(current_nodes):
+        shutil.rmtree(current_nodes)
+        os.mkdir(current_nodes)
 
 def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     '''
@@ -450,12 +486,14 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     sys.exit(f'Crystal structure and docking pose of crystal structure deviate to much (RMSD > {cutoff})')
 
 
-def dock_leafs_parallel(leaf_node):
+def dock_leafs_parallel(node_path):
     '''
     function performs docking for one leaf node. It is designed to work in parallel
     :param leaf_nodes: node that contains one of the current grown molecules
     '''
-    docked_nodes = []
+    passed_poses = 0
+    # load node object
+    leaf_node = load_node(node_path)
     poses, scores = run_plants.dock_molecule_parallel(leaf_node, PLANTS)
     # delete parent node and insert all poses as nodes
     parent = leaf_node.parent
@@ -467,47 +505,39 @@ def dock_leafs_parallel(leaf_node):
         node_id = '_'.join(node_id)
         pose_node = AnyNode(id=node_id, mol=mol, parent=parent, plants_pose=poses[i],
                             score=scores[i])
-        docked_nodes.append(pose_node)
-    return docked_nodes
+        # check for filters
+        if pass_filter(pose_node):
+            passed_poses += 1
+            # write to file
+            with open(PLANTS + f'current_nodes/{node_id}.pkl', 'wb') as pckl_file:
+                pickle.dump(pose_node, pckl_file)
+    # remove old node
+    os.remove(node_path)
+    return passed_poses
 
-
-def write_poses_to_file(mol_tree):
-    '''
-    writes the docking poses of all grown molecules in the molecular tree into a file
-    '''
-
-    path = OUT_DIR + 'grown_molecules/'
-    # check if dir is empty
-    if len(os.listdir(path)) > 0:
-        for f in os.listdir(path):
-            os.remove(os.path.join(path, f))
-    # save poses to sdf
-    leafs = mol_tree.get_leafs() + [mol_tree.get_root()]
-    for leaf in leafs:
-        pose = leaf.plants_pose
-        filename = str(leaf.id) + '.sdf'
-        run_plants.write_mol_to_sdf(pose, path + filename)
-
-def write_best_poses_to_file(mol_tree):
+def write_best_poses_to_file(high_scoring_nodes):
     '''
     writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
     '''
-    print('write best poses ...\n')
-    path = OUT_DIR + 'grown_molecules/'
-    ranking_file = OUT_DIR + 'ranking.txt'
-    # check if dir is empty
-    if len(os.listdir(path)) > 0:
-        for f in os.listdir(path):
-            os.remove(os.path.join(path, f))
-    # save poses to sdf
-    best_poses = mol_tree.get_best_poses() + [(0, mol_tree.get_root())]
-    with open(ranking_file, 'w') as f:
-        for i, p in enumerate(best_poses):
-            node = p[1]
-            pose = node.plants_pose
-            filename = str(node.id) + '.sdf'
-            run_plants.write_mol_to_sdf(pose, path + filename)
-            f.write(f'{i}\t{node.id}\t{node.score:.4f}\n')
+    if len(high_scoring_nodes) == 0:
+        return
+    else:
+        print('write best poses ...\n')
+        path = OUT_DIR + 'grown_molecules/'
+        ranking_file = OUT_DIR + 'ranking.txt'
+        # check if dir is empty
+        if len(os.listdir(path)) > 0:
+            for f in os.listdir(path):
+                os.remove(os.path.join(path, f))
+        # save poses to sdf
+        best_poses = high_scoring_nodes
+        with open(ranking_file, 'w') as f:
+            for i, p in enumerate(best_poses):
+                node = p[1]
+                pose = node.plants_pose
+                filename = str(node.id) + '.sdf'
+                run_plants.write_mol_to_sdf(pose, path + filename)
+                f.write(f'{i}\t{node.id}\t{node.score:.4f}\n')
 
 def get_base_fragment_indices(mol, base_fragment):
     '''
@@ -539,23 +569,21 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def filter_leafs(leafs, base_fragment_node, cut_off=20):
+def pass_filter(leaf_node, cut_off=5):
     '''
-    function returns only the leafs that have:
+    function returns only true if:
     1) RMSD with the base fragment below a certain threshold
     2) a equal or better score than the base fragment
     :return: filtered leafs
     '''
 
-    filtered_leafs = []
-    base_fragment = base_fragment_node.plants_pose
-    base_fragment_score = base_fragment_node.score
-    for leaf in leafs:
-        if leaf.score <= base_fragment_score*0.001:
-            rmsd = calc_RMSD(base_fragment, leaf.plants_pose)
-            if rmsd <= cut_off:
-                filtered_leafs.append(leaf)
-    return filtered_leafs
+    base_fragment = BASE_FRAGMENT_NODE.plants_pose
+    base_fragment_score = BASE_FRAGMENT_NODE.score
+    if leaf_node.score <= base_fragment_score*0.1:
+        rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
+        if rmsd <= cut_off:
+            return True
+    return False
 
 
 def read_protein_coords(protein_mol2_path):
@@ -758,7 +786,7 @@ def main():
     # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand_original.mol2'
     # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
     # read in ligand, protein and the PLANTS path
-    global PLANTS, OUT_DIR
+    global PLANTS, OUT_DIR, BASE_FRAGMENT_NODE
     # enter paths always with a slash at the end!
     ligand_mol2_path, protein_mol2_path, plants, out_dir = get_arguments()
     PLANTS = plants
@@ -771,12 +799,11 @@ def main():
     aromatic_atom_idx = get_aromatic_rings(mol)
     fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
-    tree = Mol_Tree(root)
+    BASE_FRAGMENT_NODE = root
     start_time = time()
-    grow_molecule(tree, 1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
-    write_best_poses_to_file(tree)
-    print(f'total number of grown mols: {len(tree.get_nodes())}')
-    print(f'number of best poses : {len(tree.get_nodes())}')
+    reset_all_folders()
+    high_scoring_nodes = grow_molecule(1, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    write_best_poses_to_file(high_scoring_nodes)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

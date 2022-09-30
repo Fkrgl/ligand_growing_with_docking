@@ -7,6 +7,7 @@ import pandas as pd
 from anytree import AnyNode
 from multiprocessing import Pool
 import multiprocessing
+import glob
 
 
 def write_plantsconfig(id, lig_file):
@@ -28,4 +29,5 @@ def write_plantsconfig(id, lig_file):
     #os.remove(PLANTS + f"plantsconfig_{id}")
 
 
-print(multiprocessing.cpu_count())
+for path in glob.glob('/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/*.sdf'):
+    print(path)

@@ -8,6 +8,7 @@ from anytree import AnyNode
 from multiprocessing import Pool
 import multiprocessing
 import glob
+import argparse
 
 
 def write_plantsconfig(id, lig_file):
@@ -29,5 +30,10 @@ def write_plantsconfig(id, lig_file):
     #os.remove(PLANTS + f"plantsconfig_{id}")
 
 
-for path in glob.glob('/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/grown_molecules/*.sdf'):
-    print(path)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--index', action='store_true')
+    parser.add_argument('--no-index', dest='feature', action='store_false')
+    parser.set_defaults(feature=True)
+    args = parser.parse_args()
+    print(args.feature)

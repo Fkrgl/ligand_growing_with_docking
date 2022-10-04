@@ -66,43 +66,6 @@ def compute_3D_coordinates(mol):
     AllChem.MMFFOptimizeMolecule(mol)
     return mol
 
-def choose_next_position(mol):
-    '''
-    choose the position in the atom on which the next fragment is linked
-    :param mol:
-    :return:
-    '''
-    # choose atom randomly and consider only carbons
-    atoms = list(mol.GetAtoms())
-    available_carbons = np.zeros(len(list(mol.GetAtoms())))
-    atomic_symbols = np.array([atom.GetSymbol() for atom in atoms])
-    available_carbons[atomic_symbols == 'C'] = 1
-
-    for atom in atoms:
-        print(atom.GetTotalNumHs())
-
-    # check if a further atom can be added to each carbon
-    # terminate if all possibilities are tried
-    while len(np.where(available_carbons == 1)[0]) != 0:
-        # generate list af all available carbons
-        carbons = np.where(available_carbons == 1)[0]
-        idx_next_carbon = random.randint(0, len(carbons)-1)
-        carbon_idx = carbons[idx_next_carbon]
-        # check for valenz
-        n_neighbors =  len(list(atoms[carbon_idx].GetNeighbors()))
-        n_hydrogens = atoms[carbon_idx].GetTotalNumHs()
-        # less than four atoms and at least one hydrogen (substitute the hydrogen bby the next atom)
-        if n_neighbors < 4 and n_hydrogens > 0:
-            # further atom can be added even if carbon has one double bond
-            return carbon_idx
-        else:
-            # remove carbon from list
-            available_carbons[carbon_idx] = 0
-            print('else block')
-    print('No carbon found to further extend the chain')
-    return -1
-
-
 def load_libraries(path_frag, path_link):
     """
     loads fragment and linker library
@@ -131,36 +94,6 @@ def load_libraries(path_frag, path_link):
             print(f'SMILES {linker_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
 
     return fragments, linkers
-
-def grow_ligand_at_random(smiles, n_iterations):
-    """
-    grows the ligand at ra random position by one carbon each round and saves the resulting ligand in the file
-    modified_compound1.sdf
-    :param n_iterations: number of growing iterations
-    :param smiles: base fragment as smiles
-    """
-
-    mol = Chem.MolFromSmiles(smiles)
-    # translate into raw mol to edit it
-    mol = Chem.RWMol(mol)
-    print(type(mol))
-    for i in range(n_iterations):
-        print(f'ITERATION {i}')
-        atom_idx = choose_next_position(mol)
-        print(f'The next atom will be added at atom with index {atom_idx}')
-        mol = add_group(mol, 'C', atom_idx)
-        print(atom_idx, type(atom_idx))
-        print([n.GetSymbol() for n in mol.GetAtomWithIdx(int(atom_idx)).GetNeighbors()])
-        # calculate valence states of all atoms
-        mol.UpdatePropertyCache()
-        mol = Chem.AddHs(mol)
-        # mol = Chem.rdmolops.AddHs(mol,addCoords=1)
-        print([n.GetSymbol() for n in list(mol.GetAtoms())[atom_idx].GetNeighbors()])
-        AllChem.EmbedMolecule(mol)
-        AllChem.MMFFOptimizeMolecule(mol)
-        mol = Chem.RemoveHs(mol)
-
-    run_plants.write_mol_to_sdf(mol, './results/modified_compound.sdf')
 
 def show_indexed_mol(mol):
     '''
@@ -788,8 +721,11 @@ def get_arguments():
     parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
     parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
                                                                 '\'grown_molecules\' and ranking.txt are located')
+    parser.add_argument('--index', action='store_true')
+    parser.add_argument('--no-index', dest='feature', action='store_false')
+    parser.set_defaults(feature=True)
     args = parser.parse_args()
-    return args.l, args.p, args.P, args.o
+    return args.l, args.p, args.P, args.o, args.index
 # ===================================================== MAIN  ======================================================== #
 
 def main():
@@ -801,7 +737,7 @@ def main():
     # read in ligand, protein and the PLANTS path
     global PLANTS, OUT_DIR, BASE_FRAGMENT_NODE
     # enter paths always with a slash at the end!
-    ligand_mol2_path, protein_mol2_path, plants, out_dir = get_arguments()
+    ligand_mol2_path, protein_mol2_path, plants, out_dir, has_index = get_arguments()
     PLANTS = plants
     OUT_DIR = out_dir
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
@@ -810,7 +746,8 @@ def main():
     #mol = Chem.MolFromSmiles(smiles)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
-    fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
+    if has_index:
+        fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()

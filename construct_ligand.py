@@ -794,14 +794,13 @@ def main():
     #mol = Chem.MolFromSmiles(smiles)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
-    if has_index:
-        fragments, linkers = load_libraries('data/fragment_library_2.txt', 'data/linker_library.txt', has_index)
+    fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt', has_index)
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()
     reset_all_folders()
     iter = 1
-    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[4]], aromatic_atom_idx, protein_coords)
+    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     #write_best_poses_to_file(high_scoring_nodes, iter)
     print(f'Runtime: {time()-start_time:.2f}')
 

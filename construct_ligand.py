@@ -246,65 +246,69 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                             'N': ['[Au]N']}
     nodes = []
     mol = mol_node.mol
-    # go through all linkers
-    for i, linker in enumerate(linkers):
-        mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
-        # check if molecule linker bond worked
-        if mol_linker:
-            # go through all fragments
-            for j, fragment in enumerate(fragments):
-                combo = Chem.CombineMols(mol_linker, fragment)
-                # search for linkers if no index list is specified
-                if index_list is None:
-                    fragment_atom_idx = get_linker_atom_index(combo, [fragment])
-                else:
-                    # only if there are specified indices (all intergers in list that are not 999)
-                    if index_list[j][0] != 999:
-                        fragment_atom_idx = get_linker_atom_index(combo, [fragment, index_list[j]])
-                    else:
+    with Pool(4) as pool:
+        # go through all linkers
+        for i, linker in enumerate(linkers):
+            mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
+            # check if molecule linker bond worked
+            if mol_linker:
+                # go through all fragments
+                for j, fragment in enumerate(fragments):
+                    combo = Chem.CombineMols(mol_linker, fragment)
+                    # search for linkers if no index list is specified
+                    if index_list is None:
                         fragment_atom_idx = get_linker_atom_index(combo, [fragment])
-                # go through all fragment positions
-                for p, atom_idx in enumerate(fragment_atom_idx):
-                    mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', atom_idx=atom_idx,
-                                                       bond_type=Chem.rdchem.BondType.SINGLE)
-                    # check if fragment-linker bond worked
-                    if mol_linker_fragment:
-                        ### decorate ###########################
-                        # 0)
-                        # generate conformers for base fragment and molecule to be able to align them
-                        # 1)
-                        # align mol to base fragment -> get aligned mol
-                        # 2)
-                        # get all aromatic atoms that have at least one hydrogen
-                        # 3)
-                        # generate each decoration and save them as a mol
+                    else:
+                        # only if there are specified indices (all intergers in list that are not 999)
+                        if index_list[j][0] != 999:
+                            fragment_atom_idx = get_linker_atom_index(combo, [fragment, index_list[j]])
+                        else:
+                            fragment_atom_idx = get_linker_atom_index(combo, [fragment])
+                    # go through all fragment positions
+                    for p, atom_idx in enumerate(fragment_atom_idx):
+                        mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', atom_idx=atom_idx,
+                                                           bond_type=Chem.rdchem.BondType.SINGLE)
+                        # check if fragment-linker bond worked
+                        if mol_linker_fragment:
+                            ### decorate ###########################
+                            # 0)
+                            # generate conformers for base fragment and molecule to be able to align them
+                            # 1)
+                            # align mol to base fragment -> get aligned mol
+                            # 2)
+                            # get all aromatic atoms that have at least one hydrogen
+                            # 3)
+                            # generate each decoration and save them as a mol
 
-                        # get conformers
-                        base_fragment_conformer = base_fragment_node.plants_pose
-                        mol_linker_fragment_conformer = compute_3D_coordinates(mol_linker_fragment)
-                        # align mol to base fragment
-                        mol_linker_fragment_aligned = align_to_basefragment(mol_linker_fragment_conformer, base_fragment_conformer,
-                                                                            aromatic_idx_base)
-                        # generate all decorations
-                        mol_linker_fragment_decorated = decorate_ligand(mol_linker_fragment_aligned, aromatic_idx_base,
-                                                                        protein_coords, bond_length,
-                                                                        atoms_to_functionals)
-                        # for deco in mol_linker_fragment_decorated:
-                        #     show_indexed_mol(deco)
-                        # add undecorated mol to list
-                        mol_linker_fragment_decorated.append(mol_linker_fragment)
-                        # check if each decorated mol is valid
-                        for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
-                            if mol_linker_fragment_decorated:
-                                # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]_[pose]
-                                node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}_0'
-                                new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
-                                                   score=None)
-                                write_node(new_node,
-                                           PLANTS + 'all_combinations/' + f'{node_id_parent}_{i}_{j}_{p}_{q}_0.pkl')
-        else:
-            continue
-    mol_node.children = nodes
+                            # get conformers
+                            base_fragment_conformer = base_fragment_node.plants_pose
+                            mol_linker_fragment_conformer = compute_3D_coordinates(mol_linker_fragment)
+                            # align mol to base fragment
+                            mol_linker_fragment_aligned = align_to_basefragment(mol_linker_fragment_conformer, base_fragment_conformer,
+                                                                                aromatic_idx_base)
+                            # generate all decorations
+                            mol_linker_fragment_decorated = decorate_ligand(mol_linker_fragment_aligned, aromatic_idx_base,
+                                                                            protein_coords, bond_length,
+                                                                            atoms_to_functionals)
+                            # for deco in mol_linker_fragment_decorated:
+                            #     show_indexed_mol(deco)
+                            # add undecorated mol to list
+                            mol_linker_fragment_decorated.append(mol_linker_fragment)
+                            # check if each decorated mol is valid
+                            for q, decorated_mol in enumerate(mol_linker_fragment_decorated):
+                                if mol_linker_fragment_decorated:
+                                    # node_id = [n_node]_[linker]_[fragment]_[fragment_atom_id]_[n_decoration]_[pose]
+                                    node_id = f'{node_id_parent}_{i}_{j}_{p}_{q}_0'
+                                    new_node = AnyNode(id=node_id, mol=decorated_mol, parent=mol_node, plants_pose=None,
+                                                       score=None)
+                                    pool.apply_async(write_node, (new_node, PLANTS + 'all_combinations/' +
+                                                                  f'{node_id_parent}_{i}_{j}_{p}_{q}_0.pkl'))
+            else:
+                continue
+        pool.close()
+        pool.join()
+        mol_node.children = nodes
+
 
 
 def get_possible_grow_seeds(mol, base_fragment):
@@ -800,8 +804,7 @@ def main():
     start_time = time()
     reset_all_folders()
     iter = 1
-    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
-    #write_best_poses_to_file(high_scoring_nodes, iter)
+    grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

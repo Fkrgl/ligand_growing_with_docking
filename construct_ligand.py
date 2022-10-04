@@ -66,7 +66,8 @@ def compute_3D_coordinates(mol):
     AllChem.MMFFOptimizeMolecule(mol)
     return mol
 
-def load_libraries(path_frag, path_link):
+
+def load_libraries(path_frag, path_link, has_index):
     """
     loads fragment and linker library
     :param path_frag: path to fragment lib
@@ -75,23 +76,40 @@ def load_libraries(path_frag, path_link):
     """
     fragments = []
     linkers = []
-    frag_lib = pd.read_csv(path_frag, sep='\t', header=None)
-    linker_lib = pd.read_csv(path_link, sep='\t', header=None)
     # read in fragments
-    for i in range(len(frag_lib) - 1):
-        try:
-            mol = Chem.MolFromSmiles(frag_lib.iloc[i].values[0])
-            fragments.append(mol)
-        except:
-            print(f'SMILES {frag_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
+    if has_index:
+        frag_lib = pd.read_csv(path_frag, sep=';', header=None)
+        frag_lib[1] = frag_lib[1].fillna('999')
+        index_col = frag_lib.apply(lambda x: list(map(int, list(x[1].split(',')))), axis=1)
+        frag_lib[1] = index_col
+        for i in range(len(frag_lib) - 1):
+            try:
+                mol, idx_array = frag_lib.iloc[i]
+                mol = Chem.MolFromSmiles(mol)
+                fragments.append([mol, idx_array])
+            except:
+                print(
+                    f'SMILES {frag_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
+    # if no fragment indices are supplied:
+    else:
+        frag_lib = pd.read_csv(path_frag, sep='\t', header=None)
+        for i in range(len(frag_lib) - 1):
+            try:
+                mol = Chem.MolFromSmiles(frag_lib.iloc[i].values[0])
+                fragments.append(mol)
+            except:
+                print(
+                    f'SMILES {frag_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
 
     # read in linkers
+    linker_lib = pd.read_csv(path_link, sep='\t', header=None)
     for i in range(len(linker_lib) - 1):
         try:
             mol = Chem.MolFromSmiles(linker_lib.iloc[i].values[0])
             linkers.append(mol)
         except:
-            print(f'SMILES {linker_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
+            print(
+                f'SMILES {linker_lib.iloc[i].values[0]} cannot be translates into a molecule. Please check the SMILES')
 
     return fragments, linkers
 
@@ -139,7 +157,7 @@ def get_linker_atom_index(combo, fragment):
     '''
 
     elements = ['C', 'N']
-    possible_linker_idx = list(combo.GetSubstructMatches(fragment))
+    possible_linker_idx = list(combo.GetSubstructMatches(fragment[0]))
     # more than one substructure match detected
     if len(possible_linker_idx) > 1:
         # select match containing highest atom indices (this belongs to the yet unconnceted fragment)
@@ -148,13 +166,27 @@ def get_linker_atom_index(combo, fragment):
     # only one match
     else:
         possible_linker_idx = possible_linker_idx[0]
-    # select all carbon and nitrogens that have at least one hydrogen
-    all_possible_linkers = []
-    for linker_idx in possible_linker_idx:
-        linker_atom = combo.GetAtomWithIdx(linker_idx)
-        if linker_atom.GetSymbol() in elements and linker_atom.GetTotalNumHs() > 0:
-            all_possible_linkers.append(linker_idx)
-    return all_possible_linkers
+
+    # if no index list is given, consider all possible linker atoms of fragment
+    if len(fragment) == 1:
+        # select all carbon and nitrogens that have at least one hydrogen
+        all_possible_linkers = []
+        for linker_idx in possible_linker_idx:
+            linker_atom = combo.GetAtomWithIdx(linker_idx)
+            if linker_atom.GetSymbol() in elements and linker_atom.GetTotalNumHs() > 0:
+                all_possible_linkers.append(linker_idx)
+        return all_possible_linkers
+    # if a linker list is given, return the corresponding indeces in the combo mol
+    else:
+        valid_positions = fragment[1]
+        lowest_linker = sorted(possible_linker_idx)[0]
+        valid_positions.sort()
+        corresponding_index = [index + lowest_linker for index in valid_positions]
+        # check if the highest corresponding index surpasses the combo atom index
+        if corresponding_index[-1] > len(combo.GetAtoms()) - 1:
+            return []
+        else:
+            return corresponding_index
 
 
 def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondType.SINGLE):
@@ -197,7 +229,7 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
         return None
 
 def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent, aromatic_idx_base,
-                                         base_fragment_node, protein_coords):
+                                         base_fragment_node, protein_coords, index_list=None):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
     :param mol_node: node that contains molecule to grow on
@@ -222,7 +254,15 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
             # go through all fragments
             for j, fragment in enumerate(fragments):
                 combo = Chem.CombineMols(mol_linker, fragment)
-                fragment_atom_idx = get_linker_atom_index(combo, fragment)
+                # search for linkers if no index list is specified
+                if index_list is None:
+                    fragment_atom_idx = get_linker_atom_index(combo, [fragment])
+                else:
+                    # only if there are specified indices (all intergers in list that are not 999)
+                    if index_list[j][0] != 999:
+                        fragment_atom_idx = get_linker_atom_index(combo, [fragment, index_list[j]])
+                    else:
+                        fragment_atom_idx = get_linker_atom_index(combo, [fragment])
                 # go through all fragment positions
                 for p, atom_idx in enumerate(fragment_atom_idx):
                     mol_linker_fragment = add_fragment(mol_linker, fragment, 'fragment', atom_idx=atom_idx,
@@ -314,6 +354,14 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
     '''
     global BASE_FRAGMENT_NODE
     high_scoring_nodes = []
+    frag = fragments
+    index_list = None
+    if type(fragments[0]) == list:
+        frag = []
+        index_list = []
+        for i in range(len(fragments)):
+            frag.append(fragments[i][0])
+            index_list.append(fragments[i][1])
     # begin grow with base_fragment
     k = 0
     base_fragment_node = BASE_FRAGMENT_NODE
@@ -337,8 +385,8 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
                 # grow on each possible grow seed on the current leaf
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
-                add_all_linker_fragment_combinations(leaf, grow_seed, linkers, fragments, k, aromatic_atom_idx,
-                                                     base_fragment_node, protein_coords)
+                add_all_linker_fragment_combinations(leaf, grow_seed, linkers, frag, k, aromatic_atom_idx,
+                                                     base_fragment_node, protein_coords, index_list)
                 k += 1
             # remove the leaf from the current_leaf folder (it is now the parent of new child leafs)
             os.remove(leaf_path)
@@ -747,13 +795,13 @@ def main():
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
     if has_index:
-        fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt')
+        fragments, linkers = load_libraries('data/fragment_library_2.txt', 'data/linker_library.txt', has_index)
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()
     reset_all_folders()
     iter = 1
-    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    high_scoring_nodes = grow_molecule(iter, 2, [linkers[0]], [fragments[4]], aromatic_atom_idx, protein_coords)
     #write_best_poses_to_file(high_scoring_nodes, iter)
     print(f'Runtime: {time()-start_time:.2f}')
 

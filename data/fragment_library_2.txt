@@ -1,5 +1,5 @@
 C1CC1;0
-c1ccoc1;0,1,2,3
+c1ccoc1;1,2,3
 c1ccsc1;1,2,3
 c1cc[nH]c1;1,2,3
 c1c[nH]cn1

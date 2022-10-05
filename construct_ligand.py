@@ -515,7 +515,8 @@ def dock_leafs_parallel(node_path):
 
 def write_best_poses_to_file(high_scoring_nodes, iter):
     '''
-    writes the docking poses of the highest scoring grown molecules in the molecular tree into a file
+    writes the docking poses of the highest scoring grown molecules in the molecular tree into a file and outputs their
+    molecular graph as pdf
     '''
     if len(high_scoring_nodes) == 0:
         return
@@ -529,6 +530,8 @@ def write_best_poses_to_file(high_scoring_nodes, iter):
         os.mkdir(path)
         # save poses to sdf
         best_poses = [(BASE_FRAGMENT_NODE.score, BASE_FRAGMENT_NODE)] + high_scoring_nodes
+        mols = []
+        legend = []
         with open(ranking_file, 'w') as f:
             for i, p in enumerate(best_poses):
                 node = p[1]
@@ -536,6 +539,12 @@ def write_best_poses_to_file(high_scoring_nodes, iter):
                 filename = str(node.id) + '.sdf'
                 run_plants.write_mol_to_sdf(pose, path + filename)
                 f.write(f'{i}\t{node.id}\t{node.score:.4f}\n')
+                node.mol.Compute2DCoords()
+                mols.append(Chem.RemoveHs(node.mol))
+                legend.append(f'id: {node.id}\nscore: {node.score:.4f}')
+        # write mol graph
+        pdf_path = path + 'mols.pdf'
+        write_grown_molecules_to_pdf(pdf_path, mols, legend=legend)
 
 def get_base_fragment_indices(mol, base_fragment):
     '''
@@ -585,12 +594,18 @@ def pass_filter(leaf_node, cut_off=5):
 
 
 def read_protein_coords(protein_mol2_path):
+    '''
+    function reads in the protein and returns its atomic coordinates, excluding hydrogens.
+    '''
     out_path = run_plants.convert_mol_files(protein_mol2_path, 'mol2', 'sdf')
     protein = Chem.MolFromMolFile(out_path, sanitize=False)
     protein = Chem.RemoveHs(protein, sanitize=False)
     protein_coords = protein.GetConformer().GetPositions()
     return protein_coords
 
+def write_grown_molecules_to_pdf(file_path, mols, molsPerRow=4, legend=None):
+    img = rdkit.Chem.Draw.MolsToGridImage(mols, molsPerRow=molsPerRow, legends=legend, returnPNG=False)
+    img.save(file_path)
 
 # ============================================= decorate aromatic rings  ============================================= #
 
@@ -798,7 +813,7 @@ def main():
     #mol = Chem.MolFromSmiles(smiles)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
-    fragments, linkers = load_libraries('data/fragment_library.txt', 'data/linker_library.txt', has_index)
+    fragments, linkers = load_libraries('data/fragment_library_2.txt', 'data/linker_library.txt', has_index)
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()

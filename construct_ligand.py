@@ -790,7 +790,7 @@ def get_arguments():
     parser.add_argument('p', metavar='-protein', type=str, help='path to mol2 for protein')
     parser.add_argument('frag', metavar='-fragment_lib', type=str, help='path to fragment library')
     parser.add_argument('link', metavar='-linker_lib', type=str, help='path to linker library')
-    parser.add_argument('i', metavar='-iter', type=str, help='number of growing iterations')
+    parser.add_argument('i', metavar='-iter', type=int, help='number of growing iterations')
     parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
     parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
                                                                 '\'grown_molecules\' and ranking.txt are located')

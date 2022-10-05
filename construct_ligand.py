@@ -578,7 +578,7 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def pass_filter(leaf_node, cut_off=100):
+def pass_filter(leaf_node, cut_off=5):
     '''
     function returns only true if:
     1) RMSD with the base fragment below a certain threshold
@@ -588,7 +588,7 @@ def pass_filter(leaf_node, cut_off=100):
 
     base_fragment = BASE_FRAGMENT_NODE.plants_pose
     base_fragment_score = BASE_FRAGMENT_NODE.score
-    if leaf_node.score <= base_fragment_score*0.01:
+    if leaf_node.score <= base_fragment_score*0.85:
         rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
         if rmsd <= cut_off:
             return True
@@ -733,6 +733,7 @@ def add_functional_group(mol, pos, substituent_smiles, linker_atom_symbol, bond_
             # remove hydrogen and its bond to the fragment
             mol.RemoveBond(pos, neighbor.GetIdx())
             mol.RemoveAtom(neighbor.GetIdx())
+            mol = compute_3D_coordinates(mol)
             mol.Compute2DCoords()
             # check if mol is valid
             mol = check_molecule(mol)
@@ -789,6 +790,7 @@ def get_arguments():
     parser.add_argument('p', metavar='-protein', type=str, help='path to mol2 for protein')
     parser.add_argument('frag', metavar='-fragment_lib', type=str, help='path to fragment library')
     parser.add_argument('link', metavar='-linker_lib', type=str, help='path to linker library')
+    parser.add_argument('i', metavar='-iter', type=str, help='number of growing iterations')
     parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
     parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
                                                                 '\'grown_molecules\' and ranking.txt are located')
@@ -798,13 +800,13 @@ def get_arguments():
     parser.add_argument('--no-index', dest='feature', action='store_false')
     parser.set_defaults(feature=True)
     args = parser.parse_args()
-    return args.l, args.p, args.frag, args.link, args.P, args.o, args.index
+    return args.l, args.p, args.frag, args.link, args.i, args.P, args.o, args.index
 # ===================================================== MAIN  ======================================================== #
 
 def main():
     # read in ligand, protein and the PLANTS path
     global PLANTS, OUT_DIR, BASE_FRAGMENT_NODE
-    ligand_mol2_path, protein_mol2_path, frag_path, linker_path, plants, out_dir, has_index = get_arguments()
+    ligand_mol2_path, protein_mol2_path, frag_path, linker_path, iter, plants, out_dir, has_index = get_arguments()
     PLANTS = plants
     OUT_DIR = out_dir
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
@@ -812,12 +814,14 @@ def main():
     protein_coords = read_protein_coords(protein_mol2_path)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
+    # read in fragment and linker libraries
     fragments, linkers = load_libraries(frag_path, linker_path, has_index)
+    # initiate root node
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()
     reset_all_folders()
-    iter = 2
+    # start growing
     grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 

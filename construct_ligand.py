@@ -320,23 +320,20 @@ def get_possible_grow_seeds(mol, base_fragment):
     :param base_fragment: base fragment that is contained in mol
     :return: indices of possible grow seeds
     '''
+
+    mol = Chem.RemoveHs(mol)
+    base_fragment = Chem.RemoveHs(base_fragment)
     possible_atoms = ['C', 'N']
     mol_atom_idx = set([atom.GetIdx() for atom in mol.GetAtoms()])
-    match_idx = mol.GetSubstructMatches(base_fragment)
-    for candidates in match_idx:
-        sub_structure_atom = mol.GetAtomWithIdx(candidates[0])
-        # check if atom is part of the base fragment
-        if sub_structure_atom.HasProp('base_fragment'):
-            mol_atom_idx.difference_update(candidates)
-            # only take carbons with at least one hydrogen as final grow seeds
-            final_grow_seeds = []
-            for grow_seed_idx in mol_atom_idx:
-                grow_seed = mol.GetAtomWithIdx(grow_seed_idx)
-                if grow_seed.GetSymbol() in possible_atoms and grow_seed.GetTotalNumHs() > 0:
-                    final_grow_seeds.append(grow_seed.GetIdx())
-            return final_grow_seeds
-
-    return None
+    base_fragment_indices = get_base_fragment_indices(mol, base_fragment)
+    mol_atom_idx.difference_update(base_fragment_indices)
+    # only take carbons with at least one hydrogen as final grow seeds
+    final_grow_seeds = []
+    for grow_seed_idx in mol_atom_idx:
+        grow_seed = mol.GetAtomWithIdx(grow_seed_idx)
+        if grow_seed.GetSymbol() in possible_atoms and grow_seed.GetTotalNumHs() > 0:
+            final_grow_seeds.append(grow_seed.GetIdx())
+    return final_grow_seeds
 
 def get_next_grow_seed(possible_grow_seeds):
     '''
@@ -375,6 +372,7 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
     # choose best pose for base fragment
     choose_best_initial_pose(base_fragment_node)
     base_fragment = base_fragment_node.plants_pose
+    base_fragment_node.mol = label_base_fragment(base_fragment_node.mol)
     for i in range(n_grow_iter):
         print(f'ITERATION {i+1}/{n_grow_iter}\n')
         print('construct all combinations ...')
@@ -385,8 +383,10 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             if i == 0:
                 possible_grow_seeds = [initial_grow_seed]
             else:
-                possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment)
+                possible_grow_seeds = get_possible_grow_seeds(leaf.mol, base_fragment_node.mol)
                 # grow on each possible grow seed on the current leaf
+            if len(possible_grow_seeds) == 0:
+                continue
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
                 add_all_linker_fragment_combinations(leaf, grow_seed, linkers, frag, k, aromatic_atom_idx,
@@ -404,7 +404,6 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             for passed_poses in tqdm(pool.imap_unordered(func=dock_leafs_parallel, iterable=glob.glob(pathname), chunksize=1),
                              total=len(glob.glob(pathname))):
                 n_passed_filter += passed_poses
-
         if n_passed_filter == 0:
             # later: if no improvement in one round is made, try to continue with another node that has a good score.
             print('\nNo score improvement could be achieved.\n')
@@ -426,9 +425,12 @@ def update_top_nodes(high_scoring_nodes, keep_top=100):
                 bisect.insort(high_scoring_nodes, (node.score, node))
             else:
                 # new node has lower score
-                if high_scoring_nodes[-1][0] > node.score:
-                    bisect.insort(high_scoring_nodes, (node.score, node))
-                    del high_scoring_nodes[-1]
+                try:
+                    if high_scoring_nodes[-1][0] > node.score:
+                        bisect.insort(high_scoring_nodes, (node.score, node))
+                        del high_scoring_nodes[-1]
+                except:
+                    print(f'insort failed: {type(high_scoring_nodes[-1][0])}{high_scoring_nodes[-1][0]}, {type(node.score)}{node.score}')
     return high_scoring_nodes
 
 def load_node(node_path):
@@ -529,7 +531,7 @@ def write_best_poses_to_file(high_scoring_nodes, iter):
             shutil.rmtree(path)
         os.mkdir(path)
         # save poses to sdf
-        best_poses = [(BASE_FRAGMENT_NODE.score, BASE_FRAGMENT_NODE)] + high_scoring_nodes
+        best_poses = high_scoring_nodes
         mols = []
         legend = []
         with open(ranking_file, 'w') as f:
@@ -576,7 +578,7 @@ def calc_RMSD(base_fragment, grown_mol):
     rmsd = np.sqrt(1/n * rmsd)
     return rmsd
 
-def pass_filter(leaf_node, cut_off=5):
+def pass_filter(leaf_node, cut_off=100):
     '''
     function returns only true if:
     1) RMSD with the base fragment below a certain threshold
@@ -586,7 +588,7 @@ def pass_filter(leaf_node, cut_off=5):
 
     base_fragment = BASE_FRAGMENT_NODE.plants_pose
     base_fragment_score = BASE_FRAGMENT_NODE.score
-    if leaf_node.score <= base_fragment_score*0.1:
+    if leaf_node.score <= base_fragment_score*0.01:
         rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
         if rmsd <= cut_off:
             return True
@@ -785,40 +787,37 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('l', metavar='-ligand', type=str, help='path to mol2 file for ligand')
     parser.add_argument('p', metavar='-protein', type=str, help='path to mol2 for protein')
+    parser.add_argument('frag', metavar='-fragment_lib', type=str, help='path to fragment library')
+    parser.add_argument('link', metavar='-linker_lib', type=str, help='path to linker library')
     parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
     parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
                                                                 '\'grown_molecules\' and ranking.txt are located')
-    parser.add_argument('--index', action='store_true')
+    parser.add_argument('--index', action='store_true', help='if specified, the program uses pre-defined indices to '
+                                                             'find linker atoms of the fragment. This requires a frag-'
+                                                             'ment library file with index array in the second column')
     parser.add_argument('--no-index', dest='feature', action='store_false')
     parser.set_defaults(feature=True)
     args = parser.parse_args()
-    return args.l, args.p, args.P, args.o, args.index
+    return args.l, args.p, args.frag, args.link, args.P, args.o, args.index
 # ===================================================== MAIN  ======================================================== #
 
 def main():
-    #smiles = 'C1=CC=C2C(=C1)C=CN2'
-    #smiles = 'c1cc(CCCO)ccc1'
-    #smiles = 'c1ccccc1'
-    # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/ligand_original.mol2'
-    # '/home/florian/Desktop/Uni/Semester_IV/Frontiers_in_applied_drug_design/PLANTS/'
     # read in ligand, protein and the PLANTS path
     global PLANTS, OUT_DIR, BASE_FRAGMENT_NODE
-    # enter paths always with a slash at the end!
-    ligand_mol2_path, protein_mol2_path, plants, out_dir, has_index = get_arguments()
+    ligand_mol2_path, protein_mol2_path, frag_path, linker_path, plants, out_dir, has_index = get_arguments()
     PLANTS = plants
     OUT_DIR = out_dir
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
     show_indexed_mol(mol)
     protein_coords = read_protein_coords(protein_mol2_path)
-    #mol = Chem.MolFromSmiles(smiles)
     mol = label_base_fragment(mol)
     aromatic_atom_idx = get_aromatic_rings(mol)
-    fragments, linkers = load_libraries('data/fragment_library_2.txt', 'data/linker_library.txt', has_index)
+    fragments, linkers = load_libraries(frag_path, linker_path, has_index)
     root = AnyNode(id='root', mol=mol, parent=None, plants_pose=None, score=None)
     BASE_FRAGMENT_NODE = root
     start_time = time()
     reset_all_folders()
-    iter = 1
+    iter = 2
     grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 

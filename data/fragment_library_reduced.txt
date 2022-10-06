@@ -1,0 +1,15 @@
+c1ccoc1;1,2,3
+c1cc[nH]c1;1,2,3
+c1ccccc1;0
+c1ccnnc1;1,2,3
+c1ccncc1;0,1,2,3
+c2ccc1occc1c2
+c2ccc1[nH]cnc1c2
+C
+CC(C)C;0,1
+C(=O)
+CO
+C(=O)O
+N
+CNC;0,1
+NC(=O)

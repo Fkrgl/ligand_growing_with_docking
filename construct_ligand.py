@@ -412,6 +412,14 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
         # write best poses of this round in dir
         write_best_poses_to_file(high_scoring_nodes, i+1)
 
+        # only take top 5 poses for the next run
+        # if os.path.exists(PLANTS + 'current_nodes/'):
+        #     shutil.rmtree(PLANTS + 'current_nodes/')
+        # os.mkdir(PLANTS + 'current_nodes/')
+        # for top_node in high_scoring_nodes[:5]:
+        #     top_node = top_node[1]
+        #     write_node(top_node, PLANTS + f'current_nodes/{top_node.id}.pkl')
+
     return high_scoring_nodes
 
 
@@ -421,16 +429,21 @@ def update_top_nodes(high_scoring_nodes, keep_top=100):
         # add filtered nodes for next iteration
         with open(file_path, 'rb') as f:
             node = pickle.load(f)
-            if len(high_scoring_nodes) < keep_top:
-                bisect.insort(high_scoring_nodes, (node.score, node))
-            else:
-                # new node has lower score
-                try:
-                    if high_scoring_nodes[-1][0] > node.score:
-                        bisect.insort(high_scoring_nodes, (node.score, node))
-                        del high_scoring_nodes[-1]
-                except:
-                    print(f'insort failed: {type(high_scoring_nodes[-1][0])}{high_scoring_nodes[-1][0]}, {type(node.score)}{node.score}')
+            try:
+                if len(high_scoring_nodes) < keep_top:
+                    bisect.insort(high_scoring_nodes, (node.score, node))
+                else:
+                    # new node has lower score
+                    try:
+                        if high_scoring_nodes[-1][0] > node.score:
+                            bisect.insort(high_scoring_nodes, (node.score, node))
+                            del high_scoring_nodes[-1]
+                    except:
+                        print(f'insort failed: {type(high_scoring_nodes[-1][0])}{high_scoring_nodes[-1][0]}, {type(node.score)}{node.score}')
+            except:
+                print(f'not supported between instances of AnyNode and AnyNode: {type(len(high_scoring_nodes))},'
+                      f' {type(keep_top)}' )
+                continue
     return high_scoring_nodes
 
 def load_node(node_path):
@@ -823,7 +836,7 @@ def main():
     start_time = time()
     reset_all_folders()
     # start growing
-    grow_molecule(iter, 0, [linkers[0]], [fragments[4]], aromatic_atom_idx, protein_coords)
+    grow_molecule(iter, 0, linkers, fragments, aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

@@ -35,11 +35,11 @@ def get_best_scoring_poses(ranking_file, PLANTS, cutoff=0.95):
     '''
 
     ranking = pd.read_csv(ranking_file)
-    best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
-    filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
+    best_score = ranking.iloc[0]['TOTAL_SCORE']
+    filtered_poses = ranking[ranking['TOTAL_SCORE'] <= best_score*cutoff][['TOTAL_SCORE',
                                                                                 'LIGAND_ENTRY']]
     plants_output = PLANTS + 'output/'
-    scores = filtered_poses['SCORE_NORM_HEVATOMS'].values
+    scores = filtered_poses['TOTAL_SCORE'].values
     pose_files = filtered_poses['LIGAND_ENTRY'].values
     poses = [get_mol_from_mol2file(plants_output + file + '.mol2') for file in pose_files]
     return poses, scores
@@ -50,10 +50,10 @@ def get_best_scoring_poses_parallel(ranking_file, plants_output, cutoff=0.95):
     '''
 
     ranking = pd.read_csv(ranking_file)
-    best_score = ranking.iloc[0]['SCORE_NORM_HEVATOMS']
-    filtered_poses = ranking[ranking['SCORE_NORM_HEVATOMS'] <= best_score*cutoff][['SCORE_NORM_HEVATOMS',
+    best_score = ranking.iloc[0]['TOTAL_SCORE']
+    filtered_poses = ranking[ranking['TOTAL_SCORE'] <= best_score*cutoff][['TOTAL_SCORE',
                                                                                   'LIGAND_ENTRY']]
-    scores = filtered_poses['SCORE_NORM_HEVATOMS'].values
+    scores = filtered_poses['TOTAL_SCORE'].values
     pose_files = filtered_poses['LIGAND_ENTRY'].values
     poses = [get_mol_from_mol2file(plants_output + file + '.mol2') for file in pose_files]
     return poses, scores

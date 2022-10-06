@@ -589,7 +589,7 @@ def pass_filter(leaf_node, cut_off=5):
 
     base_fragment = BASE_FRAGMENT_NODE.plants_pose
     base_fragment_score = BASE_FRAGMENT_NODE.score
-    if leaf_node.score <= base_fragment_score*0.85:
+    if leaf_node.score <= base_fragment_score:
         rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
         if rmsd <= cut_off:
             return True
@@ -823,7 +823,7 @@ def main():
     start_time = time()
     reset_all_folders()
     # start growing
-    grow_molecule(iter, 0, linkers, fragments, aromatic_atom_idx, protein_coords)
+    grow_molecule(iter, 0, [linkers[0]], [fragments[4]], aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

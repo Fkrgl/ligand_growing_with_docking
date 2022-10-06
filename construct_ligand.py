@@ -20,6 +20,7 @@ import shutil
 PLANTS = ''
 OUT_DIR = ''
 BASE_FRAGMENT_NODE = None
+TOP_SCORE = 0
 
 def label_base_fragment(mol):
     '''
@@ -229,7 +230,7 @@ def add_fragment(mol, fragment, mode, atom_idx=None, bond_type=Chem.rdchem.BondT
         return None
 
 def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments, node_id_parent, aromatic_idx_base,
-                                         base_fragment_node, protein_coords, index_list=None):
+                                         base_fragment_node, protein_coords, workers, index_list=None):
     '''
     function produces all possible base_fragment-linker-fragment combinations.
     :param mol_node: node that contains molecule to grow on
@@ -246,7 +247,7 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                             'N': ['[Au]N']}
     nodes = []
     mol = mol_node.mol
-    with Pool(4) as pool:
+    with Pool(workers) as pool:
         # go through all linkers
         for i, linker in enumerate(linkers):
             mol_linker = add_fragment(mol, linker, 'linker', atom_idx=grow_seed, bond_type=Chem.rdchem.BondType.SINGLE)
@@ -290,8 +291,6 @@ def add_all_linker_fragment_combinations(mol_node, grow_seed, linkers, fragments
                             mol_linker_fragment_decorated = decorate_ligand(mol_linker_fragment_aligned, aromatic_idx_base,
                                                                             protein_coords, bond_length,
                                                                             atoms_to_functionals)
-                            # for deco in mol_linker_fragment_decorated:
-                            #     show_indexed_mol(deco)
                             # add undecorated mol to list
                             mol_linker_fragment_decorated.append(mol_linker_fragment)
                             # check if each decorated mol is valid
@@ -343,7 +342,7 @@ def get_next_grow_seed(possible_grow_seeds):
 
 
 def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_atom_idx, protein_coords,
-                  workers=4, keep_top=100):
+                  workers, keep_top=100):
     '''
     function performs n rounds of ligand growing. In each round, each linker/fragment combination is added to each
     possible atom in the current leafs (excluding the base fragment).
@@ -390,7 +389,7 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             for grow_seed in possible_grow_seeds:
                 # grow all combinations for the current leaf
                 add_all_linker_fragment_combinations(leaf, grow_seed, linkers, frag, k, aromatic_atom_idx,
-                                                     base_fragment_node, protein_coords, index_list)
+                                                     base_fragment_node, protein_coords, workers, index_list)
                 k += 1
             # remove the leaf from the current_leaf folder (it is now the parent of new child leafs)
             os.remove(leaf_path)
@@ -408,22 +407,17 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             # later: if no improvement in one round is made, try to continue with another node that has a good score.
             print('\nNo score improvement could be achieved.\n')
             return
+
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
+
         # write best poses of this round in dir
         write_best_poses_to_file(high_scoring_nodes, i+1)
-
-        # only take top 5 poses for the next run
-        # if os.path.exists(PLANTS + 'current_nodes/'):
-        #     shutil.rmtree(PLANTS + 'current_nodes/')
-        # os.mkdir(PLANTS + 'current_nodes/')
-        # for top_node in high_scoring_nodes[:5]:
-        #     top_node = top_node[1]
-        #     write_node(top_node, PLANTS + f'current_nodes/{top_node.id}.pkl')
 
     return high_scoring_nodes
 
 
 def update_top_nodes(high_scoring_nodes, keep_top=100):
+    global TOP_SCORE
     pathname = PLANTS + 'current_nodes/*'
     for file_path in glob.glob(pathname):
         # add filtered nodes for next iteration
@@ -444,6 +438,7 @@ def update_top_nodes(high_scoring_nodes, keep_top=100):
                 print(f'not supported between instances of AnyNode and AnyNode: {type(len(high_scoring_nodes))},'
                       f' {type(keep_top)}' )
                 continue
+    TOP_SCORE = high_scoring_nodes[0][0]
     return high_scoring_nodes
 
 def load_node(node_path):
@@ -481,6 +476,7 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
     '''
     docks the crystal structure and finds under the initial docking poses the pose with the lowest RMSD
     '''
+    global TOP_SCORE
     crystal_structure = base_fragment_node.mol
     initial_poses = None
     scores = None
@@ -494,6 +490,7 @@ def choose_best_initial_pose(base_fragment_node, cutoff=1.5):
             base_fragment_node.mol = initial_poses[idx]
             base_fragment_node.plants_pose = initial_poses[idx]
             base_fragment_node.score = scores[idx]
+            TOP_SCORE = scores[idx]
             return
     # abort if threshold is not reached
     sys.exit(f'Crystal structure and docking pose of crystal structure deviate to much (RMSD > {cutoff})')
@@ -602,7 +599,7 @@ def pass_filter(leaf_node, cut_off=5):
 
     base_fragment = BASE_FRAGMENT_NODE.plants_pose
     base_fragment_score = BASE_FRAGMENT_NODE.score
-    if leaf_node.score <= base_fragment_score:
+    if leaf_node.score <= TOP_SCORE:
         rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
         if rmsd <= cut_off:
             return True
@@ -805,6 +802,7 @@ def get_arguments():
     parser.add_argument('frag', metavar='-fragment_lib', type=str, help='path to fragment library')
     parser.add_argument('link', metavar='-linker_lib', type=str, help='path to linker library')
     parser.add_argument('i', metavar='-iter', type=int, help='number of growing iterations')
+    parser.add_argument('c', metavar='-cores', type=int, help='number of cores to use')
     parser.add_argument('P', metavar='-PLANTS', type=str, help='Path to PLANTS directory')
     parser.add_argument('o', metavar='-out_dir', type=str, help='Path to output dir where result directory '
                                                                 '\'grown_molecules\' and ranking.txt are located')
@@ -814,13 +812,13 @@ def get_arguments():
     parser.add_argument('--no-index', dest='feature', action='store_false')
     parser.set_defaults(feature=True)
     args = parser.parse_args()
-    return args.l, args.p, args.frag, args.link, args.i, args.P, args.o, args.index
+    return args.l, args.p, args.frag, args.link, args.i, args.c, args.P, args.o, args.index
 # ===================================================== MAIN  ======================================================== #
 
 def main():
     # read in ligand, protein and the PLANTS path
     global PLANTS, OUT_DIR, BASE_FRAGMENT_NODE
-    ligand_mol2_path, protein_mol2_path, frag_path, linker_path, iter, plants, out_dir, has_index = get_arguments()
+    ligand_mol2_path, protein_mol2_path, frag_path, linker_path, iter, cores, plants, out_dir, has_index = get_arguments()
     PLANTS = plants
     OUT_DIR = out_dir
     mol = run_plants.get_mol_from_mol2file(ligand_mol2_path)
@@ -836,7 +834,7 @@ def main():
     start_time = time()
     reset_all_folders()
     # start growing
-    grow_molecule(iter, 0, linkers, fragments, aromatic_atom_idx, protein_coords)
+    grow_molecule(iter, 0, [linkers[0]], [fragments[4]], aromatic_atom_idx, protein_coords, workers=cores)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

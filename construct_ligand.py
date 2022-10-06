@@ -535,12 +535,13 @@ def write_best_poses_to_file(high_scoring_nodes, iter):
         mols = []
         legend = []
         with open(ranking_file, 'w') as f:
+            f.write(f'{0}\t{BASE_FRAGMENT_NODE.id}\t{BASE_FRAGMENT_NODE.score:.4f}\n')
             for i, p in enumerate(best_poses):
                 node = p[1]
                 pose = node.plants_pose
                 filename = str(node.id) + '.sdf'
                 run_plants.write_mol_to_sdf(pose, path + filename)
-                f.write(f'{i}\t{node.id}\t{node.score:.4f}\n')
+                f.write(f'{i+1}\t{node.id}\t{node.score:.4f}\n')
                 node.mol.Compute2DCoords()
                 mols.append(Chem.RemoveHs(node.mol))
                 legend.append(f'id: {node.id}\nscore: {node.score:.4f}')
@@ -822,7 +823,7 @@ def main():
     start_time = time()
     reset_all_folders()
     # start growing
-    grow_molecule(iter, 2, [linkers[0]], [fragments[20]], aromatic_atom_idx, protein_coords)
+    grow_molecule(iter, 0, linkers, fragments, aromatic_atom_idx, protein_coords)
     print(f'Runtime: {time()-start_time:.2f}')
 
 if __name__ == '__main__':

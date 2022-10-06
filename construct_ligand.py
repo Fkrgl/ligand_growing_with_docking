@@ -395,7 +395,6 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             os.remove(leaf_path)
         # dock all grown molecules from this iteration and add additional poses as nodes
         print(f'Docking of iteration {i+1} is running ...')
-
         # parallelized docking
         pathname = PLANTS + 'all_combinations/*.pkl'
         n_passed_filter = 0
@@ -409,8 +408,16 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             return
 
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
-
-        # write best poses of this round in dir
+        # #reset current leafs dir
+        # if os.path.exists(PLANTS + 'current_nodes/'):
+        #     shutil.rmtree(PLANTS + 'current_nodes/')
+        # os.mkdir(PLANTS + 'current_nodes/')
+        #
+        # # get top 25 nodes
+        # for leaf in top_leafs:
+        #     leaf = leaf[1]
+        #     write_node(leaf, PLANTS + f'current_nodes/{leaf.id}.pkl')
+        #write best poses of this round in dir
         write_best_poses_to_file(high_scoring_nodes, i+1)
 
     return high_scoring_nodes
@@ -437,10 +444,15 @@ def update_top_nodes(high_scoring_nodes, keep_top=100):
             except:
                 print(f'not supported between instances of AnyNode and AnyNode: {type(len(high_scoring_nodes))},'
                       f' {type(keep_top)}' )
-                continue
     TOP_SCORE = high_scoring_nodes[0][0]
     return high_scoring_nodes
 
+def filter_top_leafs():
+    pathname = PLANTS + 'current_nodes/*'
+    top_leafs = []
+    for file_path in glob.glob(pathname):
+        with open(file_path, 'rb') as f:
+            node = pickle.load(f)
 def load_node(node_path):
     with open(node_path, 'rb') as f:
         return pickle.load(f)
@@ -599,7 +611,7 @@ def pass_filter(leaf_node, cut_off=5):
 
     base_fragment = BASE_FRAGMENT_NODE.plants_pose
     base_fragment_score = BASE_FRAGMENT_NODE.score
-    if leaf_node.score <= TOP_SCORE:
+    if leaf_node.score <= base_fragment_score:
         rmsd = calc_RMSD(base_fragment, leaf_node.plants_pose)
         if rmsd <= cut_off:
             return True

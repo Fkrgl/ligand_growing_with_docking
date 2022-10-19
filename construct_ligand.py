@@ -408,15 +408,7 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             return
 
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
-        # #reset current leafs dir
-        # if os.path.exists(PLANTS + 'current_nodes/'):
-        #     shutil.rmtree(PLANTS + 'current_nodes/')
-        # os.mkdir(PLANTS + 'current_nodes/')
-        #
-        # # get top 25 nodes
-        # for leaf in top_leafs:
-        #     leaf = leaf[1]
-        #     write_node(leaf, PLANTS + f'current_nodes/{leaf.id}.pkl')
+
         #write best poses of this round in dir
         write_best_poses_to_file(high_scoring_nodes, i+1)
 

@@ -1,0 +1,32 @@
+# data directory
+    1. fragment_library.txt - normal fragment lib
+    2. fragment_library_2.txt - frag lib with predefined grow seeds (speed up)
+    3. fragment_library_reduced.txt  -  reduced fragment lib for test run
+    4. linker_library.txt - normal linker lib
+    5. linker_library_reduced.txt - reduced linker lib for test run
+
+# Program call and parameters
+    - before running the program, the PLANTS box around the ligand has to be specified and added to the plantsconfig
+      file
+    - information and parameters can be obtained by calling
+        python construct_ligand.py -h
+    - to know what the index of the atom you want to grown on is, the program has to be started. The program will show
+      the molecule with the rdkit atom indices. Simply note the index you want to begin the grow and restart the program
+    - all directory path should end with a "/" (otherwise string concat for file path will produce non existing paths)
+    - when using the index speed up, the flag "--index" must be set
+    - in default mode the flag "--no-index" must be set
+
+# Things to be implemented
+    1. Search space pruning
+        - program has very long runtime if all molecules are used that passed the filter in one iteration
+        - one work around would be to only take the 50 best at the end of a iteration
+        - this could be done right before line 410. The array "high_scoring_nodes" cannot be taken, because it saves
+          the best poses from all iterations, but we want to get the best poses of this iteration. A function to do this
+          could look similar to "update_top_nodes". The function would have to go in the directory with the nodes that
+          passed the filter in this iteration ("current_nodes") and search for the 100 highest scoring. A faster variant
+          would be to save the 100 best poses directly in an array (insort to keep a sorted list just as with the array
+          "high_scoring_nodes"). After the iteration, all nodes in "current_nodes" would be deleted and replaced by the
+          top 100 nodes of this iteration. But do not delete the directory and replace it by an array, this will produce
+          to much load on the main memory
+        - when I speak of saving a pose, I mean more concretely to save the node object that contains the 2D mol, the
+          pose (3D mol) and the plants score.

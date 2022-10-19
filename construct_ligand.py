@@ -408,8 +408,7 @@ def grow_molecule(n_grow_iter, initial_grow_seed, linkers, fragments, aromatic_a
             return
 
         high_scoring_nodes = update_top_nodes(high_scoring_nodes)
-
-        #write best poses of this round in dir
+        # write best poses of this round in dir
         write_best_poses_to_file(high_scoring_nodes, i+1)
 
     return high_scoring_nodes
